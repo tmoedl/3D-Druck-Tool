@@ -1,0 +1,492 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>STL-Farbeditor</title>
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
+</script>
+</head>
+<body>
+<header id="topbar">
+  <div class="brand">STL&#8209;Farbeditor <span class="version" title="Version">v1.0.0</span></div>
+  <button id="btnOpen" title="STL, OBJ oder 3MF öffnen (Strg+O)">Öffnen…</button>
+  <button id="btnAdd" title="Weitere Teile zum aktuellen Modell hinzufügen">Teil hinzufügen…</button>
+  <button id="btnImage" title="Bild als farbige Platte erzeugen oder auf das Modell projizieren">Bild importieren…</button>
+  <button id="btnPlaceAgain" hidden title="Das zuletzt verwendete Bild noch einmal platzieren – auch auf einem anderen geöffneten Modell">Letztes Bild platzieren</button>
+  <button id="btnLogo" title="Logo als Schild mit 3D-Effekten, Plattenform und Rahmen">Logo / Schild…</button>
+  <span class="sep"></span>
+  <button id="btnUndo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+  <button id="btnRedo" title="Wiederholen (Strg+Y)">↷</button>
+  <span class="grow"></span>
+  <button id="btnExport" class="primary" title="3MF für Anycubic Slicer Next / OrcaSlicer / Bambu Studio">3MF exportieren</button>
+  <input type="file" id="fileModel" accept=".stl,.obj,.3mf" multiple hidden>
+  <input type="file" id="fileAdd" accept=".stl,.obj,.3mf" multiple hidden>
+  <input type="file" id="fileImage" accept="image/*" hidden>
+  <input type="file" id="fileLogo" accept="image/*" hidden>
+</header>
+
+<div id="main">
+  <nav id="tools">
+    <button data-tool="view" title="Ansicht (V)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M2.5 12c0-2.5 4.3-4.5 9.5-4.5s9.5 2 9.5 4.5-4.3 4.5-9.5 4.5"/><path d="M9 14.5l3 2-3 2"/></svg><span>Ansicht</span></button>
+    <button data-tool="brush" title="Pinsel (B)"><svg viewBox="0 0 24 24"><path d="M14.5 4.5l5 5-7.5 7.5-5-5z"/><path d="M7 12.5c-2.5.5-3.5 2.5-3.5 4.5 0 1.5-1 2.5-1.5 3 3 .5 7-.5 8-3.5"/></svg><span>Pinsel</span></button>
+    <button data-tool="tri" title="Einzelne Dreiecke (T)"><svg viewBox="0 0 24 24"><path d="M12 4l9 16H3z"/></svg><span>Dreieck</span></button>
+    <button data-tool="fill" title="Eimer – Fläche füllen (F)"><svg viewBox="0 0 24 24"><path d="M4 11l7-7 8 8-7 7z"/><path d="M4 11h15"/><path d="M20.5 15c.7 1.4 1.5 2.4 1.5 3.3a1.5 1.5 0 0 1-3 0c0-.9.8-1.9 1.5-3.3z"/></svg><span>Eimer</span></button>
+    <button data-tool="rect" title="Rechteck mit Füllung (R)"><svg viewBox="0 0 24 24"><rect x="3.5" y="6" width="17" height="12" rx="1" stroke-dasharray="3 2"/><rect x="7" y="9" width="10" height="6" class="fillshape"/></svg><span>Rechteck</span></button>
+    <button data-tool="shape" title="Exakte Form – Kreis, Rechteck, Polygon, Lasso (K)"><svg viewBox="0 0 24 24"><circle cx="9" cy="9.5" r="6"/><rect x="11.5" y="12" width="9" height="8" rx="1" class="fillshape"/><rect x="11.5" y="12" width="9" height="8" rx="1"/></svg><span>Form</span></button>
+    <button data-tool="grad" title="Farbverlauf zwischen zwei Filamenten (G)"><svg viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="16" rx="1.5"/><path d="M7 4v16M10.5 4v16" class="fillshape" stroke-width="2.4"/><circle cx="14" cy="8" r=".8"/><circle cx="16" cy="12" r=".8"/><circle cx="14" cy="16" r=".8"/></svg><span>Verlauf</span></button>
+    <button data-tool="height" title="Ab Höhe färben (H)"><svg viewBox="0 0 24 24"><path d="M3 14h18" stroke-dasharray="3 2"/><path d="M5 20h14"/><path d="M12 3v8M9 6l3-3 3 3"/></svg><span>Höhe</span></button>
+    <button data-tool="pick" title="Farbe aufnehmen (I)"><svg viewBox="0 0 24 24"><path d="M15 4.5l4.5 4.5"/><path d="M17 7l-9.5 9.5L4 20l3.5-3.5"/><path d="M13 5l6 6"/></svg><span>Pipette</span></button>
+    <button data-tool="split" title="Teilen – Modell für den Druck zerlegen, mit Verbindern (S)"><svg viewBox="0 0 24 24"><path d="M3.5 7.5h6.5v10h-6.5z"/><path d="M14 7.5h6.5v10H14z"/><path d="M12 3v18" stroke-dasharray="2 2"/><circle cx="8" cy="12.5" r="1.2"/><circle cx="16" cy="12.5" r="1.2"/></svg><span>Teilen</span></button>
+    <button data-tool="flat" title="Auf Fläche legen (L)"><svg viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M6 17l6-11 6 11z"/><path d="M12 17v3"/></svg><span>Hinlegen</span></button>
+  </nav>
+
+  <div id="viewport">
+    <canvas id="c"></canvas>
+    <div id="rect" hidden></div>
+    <div id="empty">
+      <div class="emptybox">
+        <h1>STL hier hineinziehen</h1>
+        <p>oder <b>Öffnen…</b> (STL, OBJ, 3MF) · Bilder (PNG/JPG) werden als farbige Platte importiert</p>
+        <button id="btnDemo">Demo-Modell laden</button>
+      </div>
+    </div>
+    <div id="busy" hidden></div>
+    <div id="toast" hidden></div>
+  </div>
+
+  <aside id="panel">
+    <section>
+      <h3>Filamente <small>(Taste 1–8)</small></h3>
+      <div id="palette"></div>
+      <div class="row">
+        <button id="btnAddSlot">+ Filament</button>
+        <button id="btnFillAll" title="Gesamtes Modell mit der aktiven Farbe färben">Alles färben</button>
+      </div>
+      <div class="row">
+        <select id="replFrom" title="Diese Farbe …"></select>
+        <button id="btnReplace" title="… überall durch die aktive Farbe ersetzen">→ durch aktive ersetzen</button>
+      </div>
+    </section>
+
+    <section id="toolOpts">
+      <h3 id="toolTitle">Werkzeug</h3>
+      <div data-for="brush">
+        <label class="slider">Pinselradius <output id="brushROut"></output>
+          <input type="range" id="brushR" min="0.2" max="50" step="0.1" value="3"></label>
+        <p class="note">Färbt zusammenhängende Dreiecke im Radius. Für feine Details das Modell unter „Modell“ unterteilen.</p>
+      </div>
+      <div data-for="tri">
+        <p class="note">Färbt genau die Dreiecke unter dem Mauszeiger (gedrückt halten und ziehen).</p>
+      </div>
+      <div data-for="fill">
+        <label class="slider">Kantenwinkel <output id="fillAngleOut"></output>
+          <input type="range" id="fillAngle" min="1" max="180" step="1" value="30"></label>
+        <label class="check"><input type="checkbox" id="fillSame" checked> Nur gleiche Farbe (stoppt an Farbgrenzen)</label>
+        <label class="check"><input type="checkbox" id="fillRel"> Winkel relativ zur Startfläche (für gekrümmte Flächen)</label>
+        <p class="note">Die Füllung breitet sich aus, bis der Knick zwischen zwei Flächen größer als der Winkel ist. 180° = ganzes zusammenhängendes Teil.</p>
+      </div>
+      <div data-for="rect">
+        <label class="check"><input type="checkbox" id="rectVis" checked> Nur sichtbare Flächen</label>
+        <p class="note">Rechteck aufziehen. Ohne Haken wird auch die Rückseite/verdeckte Fläche gefärbt.</p>
+      </div>
+      <div data-for="shape">
+        <div class="seg" id="shapeKind">
+          <button data-shape="circle">Kreis</button><button data-shape="rect">Rechteck</button><button data-shape="poly">Polygon</button><button data-shape="lasso">Lasso</button>
+        </div>
+        <label class="check"><input type="checkbox" id="shapeFixed"> Feste Größe (Klick setzt die Form)</label>
+        <div class="row" id="shapeSizeRow">
+          <label class="inline"><span id="shapeWLbl">Ø</span> <input type="number" id="shapeW" value="10" min="0.1" step="0.5"></label>
+          <label class="inline" id="shapeHLbl">× <input type="number" id="shapeH" value="10" min="0.1" step="0.5"></label> mm
+        </div>
+        <div class="row">
+          <label class="inline">Drehung <input type="number" id="shapeRot" value="0" step="15"> °</label>
+        </div>
+        <div class="row">
+          <label class="inline" title="0 = nur färben · positiv = erhaben · negativ = vertieft">Höhe <input type="number" id="shapeHeight" value="0" step="0.2"> mm</label>
+        </div>
+        <p class="note">0 = nur färben (bündig) · positiv = erhaben · negativ = eingraviert</p>
+        <label class="check"><input type="checkbox" id="shapeTop" checked> Nur oberste Fläche (sonst durch alle Lagen)</label>
+        <div class="row"><label class="inline">Ausrichtung <select id="shapeDir"><option value="normal">an der Fläche</option><option value="view">Blickrichtung</option></select></label></div>
+        <p class="note" id="shapeNote"></p>
+      </div>
+      <div data-for="place">
+        <p class="note"><b>Bild platzieren:</b> Mit der Maus auf dem Modell positionieren, jeder Klick setzt das Bild – beliebig oft. <b>[ ]</b> Größe, <b>, .</b> drehen. <b>Fertig</b> oder Esc beendet. Auch nach dem Öffnen eines anderen Modells bleibt das Bild aktiv.</p>
+        <div class="row"><label class="inline">Breite <input type="number" id="plcW" value="40" min="1" step="1"> mm</label></div>
+        <div class="row"><label class="inline">Drehung <input type="number" id="plcRot" value="0" step="15"> °</label></div>
+        <div class="row"><label class="inline">Ausrichtung <select id="plcDir"><option value="normal">an der Fläche</option><option value="view">Blickrichtung</option></select></label></div>
+        <label class="check"><input type="checkbox" id="plcTop" checked> Nur oberste Fläche</label>
+        <p class="note" id="plcInfo"></p>
+        <div class="row"><button id="plcBack">Zurück zum Dialog</button><button id="plcCancel" class="primary">Fertig</button></div>
+      </div>
+      <div data-for="grad">
+        <div class="row">
+          <label class="inline">von <select id="gradA"></select></label>
+          <button id="gradSwap" title="Farben tauschen">⇄</button>
+          <label class="inline">nach <select id="gradB"></select></label>
+        </div>
+        <div class="gradbar" id="gradBar"></div>
+        <div class="row"><label class="inline">Richtung <select id="gradDir">
+          <option value="z+">unten → oben (Z)</option><option value="z-">oben → unten (Z)</option>
+          <option value="x+">links → rechts (X)</option><option value="x-">rechts → links (X)</option>
+          <option value="y+">vorne → hinten (Y)</option><option value="y-">hinten → vorne (Y)</option>
+          <option value="sx">Bildschirm: links → rechts</option><option value="sy">Bildschirm: unten → oben</option>
+          <option value="pts">2 Punkte auf dem Modell</option>
+        </select></label></div>
+        <p class="note" id="gradDirNote"></p>
+        <div class="row"><button id="gradView" title="Richtung aus der aktuellen Ansicht übernehmen">Ansicht übernehmen</button></div>
+        <div id="gradRangeBox">
+          <label class="check"><input type="radio" name="gradRange" value="all" checked> Übergang über das ganze Objekt</label>
+          <label class="check"><input type="radio" name="gradRange" value="width"> Übergang auf
+            <input type="number" id="gradWidth" value="10" min="0" step="1" style="width:58px"> mm Breite</label>
+          <label class="slider" id="gradPosLbl">Mitte des Übergangs <output id="gradPosOut">50 %</output>
+            <input type="range" id="gradPos" min="0" max="100" step="0.5" value="50"></label>
+        </div>
+        <label class="slider" title="Größe der Farbpunkte bzw. Streifen. Klein = feiner, genauer Übergang (braucht feineres Netz)">Körnung <output id="gradGrainOut"></output>
+          <input type="range" id="gradGrain" min="0" max="100" step="1" value="45"></label>
+        <div class="row">
+          <label class="inline">Muster <select id="gradPattern"></select></label>
+        </div>
+        <div class="row">
+          <label class="inline">Verlauf <select id="gradCurve"></select></label>
+        </div>
+        <div class="row"><label class="inline">Nur auf <select id="gradOnly"></select></label></div>
+        <p class="note" id="gradInfo"></p>
+        <div class="row">
+          <button id="gradSubdiv" title="Dreiecke im Übergang auf Körnung unterteilen – nötig für feine Verläufe">Übergang fein unterteilen</button>
+        </div>
+        <div class="row">
+          <button id="gradApply" class="primary">Übernehmen</button>
+          <button id="gradReset">Verwerfen</button>
+        </div>
+        <p class="note">Die Vorschau erscheint sofort am Modell. Ein Klick auf das Modell setzt die Mitte des Übergangs (bei „2 Punkte“: Start, dann Ende).</p>
+      </div>
+      <div data-for="height">
+        <label class="check"><input type="checkbox" id="heightBelow"> Unterhalb statt oberhalb</label>
+        <p class="note">Klick auf das Modell färbt alles ober- bzw. unterhalb dieser Höhe (Shift kehrt um). Ideal für Farbwechsel nach Schichthöhe.</p>
+      </div>
+      <div data-for="pick"><p class="note">Klick übernimmt die Farbe der Fläche. Geht auch mit Alt+Klick in jedem Werkzeug.</p></div>
+      <div data-for="flat"><p class="note">Klick auf eine Fläche legt das Modell mit dieser Fläche nach unten auf das Druckbett.</p></div>
+      <div data-for="view"><p class="note">Linke Maustaste dreht, rechte verschiebt, Mausrad zoomt.</p></div>
+      <div data-for="split">
+        <div class="seg" id="spMode">
+          <button data-m="axis">Achse</button><button data-m="region" title="Fläche anklicken – ihre Grenze wird zur Schnittlinie">Bereich</button><button data-m="edge">Kante</button><button data-m="thin">Querschnitt</button>
+          <button data-m="face">Fläche</button><button data-m="pts">3 Punkte</button><button data-m="auto">Bauraum</button>
+        </div>
+        <p class="note" id="spModeNote"></p>
+        <div class="spm" data-m="axis">
+          <div class="row"><label class="inline">Achse <select id="spAxis"><option value="z">Z – waagrecht schneiden</option><option value="x">X</option><option value="y">Y</option></select></label></div>
+          <label class="slider">Position <input type="range" id="spPos" min="0" max="100" step="0.1"></label>
+          <div class="row"><label class="inline">Position <input type="number" id="spPosNum" step="0.5"> mm</label></div>
+          <div class="row"><label class="inline" title="Mehrere parallele Schnitte im festen Abstand">Schnitte <input type="number" id="spRepeat" value="1" min="1" max="30" style="width:52px"></label>
+            <label class="inline">im Abstand <input type="number" id="spRepeatGap" value="50" min="0" step="1" style="width:60px"> mm</label></div>
+        </div>
+        <div class="spm" data-m="region">
+          <label class="slider" title="Die Auswahl breitet sich aus, bis der Knick zwischen zwei Flächen größer ist">Auswahl bis Knick <output id="spRegAngOut"></output>
+            <input type="range" id="spRegAng" min="2" max="90" step="1" value="25"></label>
+          <div id="spLoops"></div>
+          <div class="row"><label class="inline">Schnitt <select id="spForm">
+            <option value="curve">folgt genau der Grenze (gewölbt)</option>
+            <option value="below">eben, knapp innerhalb der Auswahl</option>
+            <option value="above">eben, knapp außerhalb der Auswahl</option>
+            <option value="mid">eben, mittig durch die Grenze</option>
+          </select></label></div>
+          <div class="row" id="spMarginRow"><label class="inline" title="Abstand der ebenen Schnittfläche zur Grenze">Abstand zur Grenze <input type="number" id="spMargin" value="0.3" min="0" step="0.1"> mm</label></div>
+          <div class="row"><label class="inline">Richtung <select id="spDir">
+            <option value="auto">automatisch (quer zur Grenze)</option>
+            <option value="z">Z-Achse</option>
+            <option value="view">Blickrichtung</option>
+          </select></label></div>
+          <div class="row"><button id="spRegClear">Auswahl löschen</button></div>
+          <p class="note">Tipp: Beim gewölbten Schnitt liegt die Fuge genau unter der Kante und ist später kaum zu sehen. Beide Teile bekommen dieselbe Schnittfläche.</p>
+        </div>
+        <div class="spm" data-m="edge">
+          <label class="slider" title="Ab diesem Knick zwischen zwei Flächen zählt eine Kante">Kante ab Knickwinkel <output id="spEdgeAngOut"></output>
+            <input type="range" id="spEdgeAng" min="2" max="90" step="1" value="20"></label>
+        </div>
+        <div class="spm" data-m="pts"><div class="row"><button id="spPtsReset">Punkte neu setzen</button></div></div>
+        <div class="spm" data-m="auto">
+          <div class="row"><label class="check" style="margin:0"><input type="checkbox" id="spThin" checked> Schnitte an schmale Stellen legen (kleinere Fugen)</label></div>
+          <div class="row"><label class="inline" title="So viel kleiner als der Bauraum sollen die Teile sein">Rand <input type="number" id="spBedMargin" value="10" min="0" step="1"> mm</label>
+            <button id="spPlan">Schnitte berechnen</button></div>
+          <p class="note" id="spPlanInfo"></p>
+        </div>
+        <div class="box" id="spTune">
+          <h4>Ebene anpassen</h4>
+          <label class="slider">Versatz <input type="range" id="spOffsetR" min="-50" max="50" step="0.05" value="0"></label>
+          <div class="row"><label class="inline">Versatz <input type="number" id="spOffset" value="0" step="0.5"> mm</label></div>
+          <div class="row"><label class="inline">Kippen <input type="number" id="spTiltU" value="0" step="1" style="width:52px">° / <input type="number" id="spTiltW" value="0" step="1" style="width:52px">°</label></div>
+          <div class="row"><button id="spFlip" title="Teil 1 und Teil 2 vertauschen (Pfeil zeigt zu Teil 2)">⇄ Seiten tauschen</button><button id="spLook" title="Ansicht senkrecht auf die Schnittfläche">Auf Ebene schauen</button></div>
+          <label class="check"><input type="radio" name="spScope" value="local" id="spScopeLocal"> Nur an der angeklickten Stelle schneiden</label>
+          <label class="check"><input type="radio" name="spScope" value="all" checked> Ganze Ebene (alles, was sie trifft)</label>
+          <div class="row"><label class="inline" title="Punkte, die näher an der Ebene liegen, werden auf sie gezogen – so läuft der Schnitt genau entlang vorhandener Kanten">Fangen <input type="number" id="spSnap" value="0.002" min="0" step="0.005"> mm</label></div>
+          <p class="note" id="spPlaneInfo"></p>
+        </div>
+        <div class="box" id="spConnBox">
+          <h4>Verbindung</h4>
+          <select id="spConn" style="width:100%"></select>
+          <div class="grid2">
+            <label data-show="dowel pinA pinB holes">Form <select data-p="shape" id="spShape"></select></label>
+            <label data-show="dowel pinA pinB">Ø Stift (mm) <input type="number" data-p="d" min="0.5" step="0.5"></label>
+            <label data-show="dowel" title="Gesamtlänge des Dübels">Länge (mm) <input type="number" data-p="len" min="1" step="1"></label>
+            <label data-show="dowel" title="Wie viel vom Dübel in Teil 1 steckt">Anteil Teil 1 (%) <input type="number" data-p="split" min="10" max="90" step="5"></label>
+            <label data-show="pinA pinB">Höhe (mm) <input type="number" data-p="pinH" min="0.5" step="0.5"></label>
+            <label data-show="dowel pinA pinB" title="Luft rundum zwischen Stift und Loch (radial)">Spiel (mm) <input type="number" data-p="clear" min="0" step="0.05"></label>
+            <label data-show="dowel pinA pinB" title="Loch so viel tiefer als nötig (Platz für Kleber, Ungenauigkeit)">Lochzugabe (mm) <input type="number" data-p="extra" min="0" step="0.1"></label>
+            <label data-show="dowel pinA pinB" title="Fase an der Stiftspitze – erleichtert das Einführen">Fase Stift (mm) <input type="number" data-p="chamfer" min="0" step="0.1"></label>
+            <label data-show="dowel pinA pinB magnet holes" title="Fase am Lochrand – verhindert Elefantenfuß und hilft beim Einführen">Fase Loch (mm) <input type="number" data-p="holeChamfer" min="0" step="0.1"></label>
+            <label data-show="magnet">Ø Magnet (mm) <input type="number" data-p="magD" min="1" step="0.5"></label>
+            <label data-show="magnet">Höhe Magnet (mm) <input type="number" data-p="magH" min="0.5" step="0.5"></label>
+            <label data-show="magnet" title="Luft rundum (radial)">Spiel (mm) <input type="number" data-p="magClear" min="0" step="0.05"></label>
+            <label data-show="magnet">Tiefenzugabe (mm) <input type="number" data-p="magExtra" min="0" step="0.1"></label>
+            <label data-show="magnet">Bohrungen in <select data-p="magSide"><option value="both">beiden Teilen</option><option value="A">nur Teil 1</option><option value="B">nur Teil 2</option></select></label>
+            <label data-show="holes">Ø Bohrung (mm) <input type="number" data-p="holeD" min="0.5" step="0.1"></label>
+            <label data-show="holes">Tiefe Teil 1 (mm) <input type="number" data-p="holeDepthA" min="0" step="0.5"></label>
+            <label data-show="holes">Tiefe Teil 2 (mm) <input type="number" data-p="holeDepthB" min="0" step="0.5"></label>
+            <label data-show="tongue rabbet" title="Abstand der Feder bzw. des Absatzes von der Außenkante">Abstand Rand (mm) <input type="number" data-p="tEdge" min="0.2" step="0.2"></label>
+            <label data-show="tongue">Breite Feder (mm) <input type="number" data-p="tWidth" min="0.4" step="0.2"></label>
+            <label data-show="tongue rabbet">Höhe (mm) <input type="number" data-p="tHeight" min="0.2" step="0.2"></label>
+            <label data-show="tongue rabbet" title="Luft je Seite zwischen Feder und Nut">Spiel (mm) <input type="number" data-p="tClear" min="0" step="0.05"></label>
+            <label data-show="tongue rabbet" title="Nut so viel tiefer als die Feder hoch ist">Tiefenzugabe (mm) <input type="number" data-p="tExtra" min="0" step="0.1"></label>
+            <label data-show="tongue rabbet">Feder an <select data-p="tSide"><option value="A">Teil 1</option><option value="B">Teil 2</option></select></label>
+            <label data-show="dowel pinA pinB magnet holes">Anzahl <select data-p="count"><option value="0">automatisch</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>8</option><option>10</option></select></label>
+            <label data-show="dowel pinA pinB magnet holes tongue rabbet" title="Mindestabstand der Bohrung/Nut zur Außenwand – in jeder Tiefe geprüft">Mindestwand (mm) <input type="number" data-p="wall" min="0" step="0.2"></label>
+          </div>
+          <label class="check" data-show="dowel"><input type="checkbox" data-p="lying"> Dübel liegend drucken (stabiler)</label>
+          <label data-show="dowel" class="inline" style="margin-top:6px" title="Unten flach abschneiden, damit der liegende Dübel nicht wegrollt">Abflachung <input type="number" data-p="flat" min="0" step="0.1"> mm</label>
+          <div id="spEditor">
+            <canvas id="spCanvas"></canvas>
+            <p class="note">Schnittansicht (Blick von Teil 2): Klick setzt einen Verbinder, Ziehen verschiebt, Rechtsklick entfernt. Grün = in Ordnung, rot = zu nah an der Wand (in irgendeiner Tiefe).</p>
+            <div class="row"><button id="spAuto">Automatisch verteilen</button><button id="spClear">Alle entfernen</button></div>
+          </div>
+          <p class="note" id="spConnInfo"></p>
+        </div>
+        <div class="box">
+          <h4>Teilen</h4>
+          <div class="row"><label class="inline" title="So weit wird Teil 2 nach dem Schnitt weggeschoben">Abstand danach <input type="number" id="spGap" value="10" min="0.1" step="1"> mm</label></div>
+          <div class="row"><label class="inline">Schnittfläche <select id="spCapSlot"></select></label></div>
+          <div class="row"><button id="spDo" class="primary">Teilen</button></div>
+        </div>
+        <div class="box">
+          <h4>Teile &amp; Druck <span class="muted" id="spPartsHead"></span></h4>
+          <div id="spParts"></div>
+          <div class="row bedrow">Bauraum <input type="number" id="spBedX" value="250" min="10"> × <input type="number" id="spBedY" value="250" min="10"> × <input type="number" id="spBedZ" value="250" min="10"> mm</div>
+          <div class="row"><label class="inline">Abstand der Teile <input type="number" id="spSpacing" value="6" min="1" step="1"> mm</label></div>
+          <div class="row"><button id="spArrange" title="Jedes Teil auf seine größte ebene Fläche legen (meist die Schnittfläche) und auf dem Druckbett verteilen">Hinlegen &amp; anordnen</button><button id="spArrangeOnly" title="Ausrichtung behalten, nur verteilen">Nur anordnen</button></div>
+          <div class="row"><button id="spStl">Teile als STL (ZIP)</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h3>Modell</h3>
+      <div id="modelInfo" class="note">Kein Modell geladen.</div>
+      <div class="grid3">
+        <button data-rot="x,90">X +90°</button><button data-rot="y,90">Y +90°</button><button data-rot="z,90">Z +90°</button>
+        <button data-rot="x,-90">X −90°</button><button data-rot="y,-90">Y −90°</button><button data-rot="z,-90">Z −90°</button>
+      </div>
+      <div class="row">
+        <button id="btnMirror" title="An der X-Achse spiegeln">Spiegeln</button>
+        <button id="btnFit" title="Ansicht einpassen (Pos1)">Ansicht einpassen</button>
+      </div>
+      <div class="row">
+        <label class="inline">Skalieren <input type="number" id="scalePct" value="100" min="1" step="1"> %</label>
+        <button id="btnScale">Anwenden</button>
+      </div>
+      <div class="row">
+        <label class="inline" title="Alle Dreieckskanten, die länger sind, werden halbiert">Unterteilen bis <input type="number" id="subdivMm" value="2" min="0.05" step="0.1"> mm</label>
+        <button id="btnSubdiv">Unterteilen</button>
+      </div>
+      <label class="check"><input type="checkbox" id="showWire"> Dreiecksnetz anzeigen (W)</label>
+    </section>
+
+    <section>
+      <h3>Export</h3>
+      <label class="check"><input type="checkbox" id="expParts" checked> Getrennte Teile als einzelne Objekte (im Slicer einzeln anordnen)</label>
+      <p class="note">Die 3MF-Datei enthält die Bemalung im Format von <b>Anycubic Slicer Next</b> (auch OrcaSlicer, Bambu Studio, PrusaSlicer). Filament 1 im Editor = Filament 1 im Slicer. Im Slicer so viele Filamente anlegen wie verwendet.</p>
+    </section>
+  </aside>
+</div>
+
+<footer id="status"><span id="hint"></span><span id="stats"></span></footer>
+
+<div id="imgDlg" class="modal" hidden>
+  <div class="dlg">
+    <h2>Bild importieren <span id="imgName" class="muted"></span></h2>
+    <div class="dlgbody">
+      <div class="imgcol">
+        <figure><canvas id="imgOrig"></canvas><figcaption>Original (angepasst)</figcaption></figure>
+        <figure><canvas id="imgQuant" class="checker"></canvas><figcaption>Reduziert – so wird gedruckt</figcaption></figure>
+        <div class="box">
+          <h4>Bild anpassen</h4>
+          <div class="row">
+            <button id="imgRotL" title="90° nach links">⟲ 90°</button>
+            <button id="imgRotR" title="90° nach rechts">⟳ 90°</button>
+            <label class="check" style="margin:0"><input type="checkbox" id="imgMirror"> Spiegeln</label>
+            <button id="imgAdjReset">Zurücksetzen</button>
+          </div>
+          <label class="slider">Helligkeit <output id="imgBriO">0</output><input type="range" id="imgBri" min="-100" max="100" value="0"></label>
+          <label class="slider">Kontrast <output id="imgConO">0</output><input type="range" id="imgCon" min="-100" max="100" value="0"></label>
+          <label class="slider">Sättigung <output id="imgSatO">100 %</output><input type="range" id="imgSat" min="0" max="200" value="100"></label>
+        </div>
+      </div>
+      <div class="optcol">
+        <div class="box">
+          <h4>Farben</h4>
+          <label class="check"><input type="radio" name="colMode" value="auto" checked> Automatisch aus dem Bild (größte Flächen)</label>
+          <label class="check"><input type="radio" name="colMode" value="fixed"> Nur diese vorhandenen Filamente verwenden:</label>
+          <div id="fixedSlots"></div>
+          <div class="row3">
+            <label id="imgKLbl">Anzahl <select id="imgK"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+            <label title="Mehrheitsfilter – entfernt einzelne Pixel und Rauschen">Glätten <select id="imgSmooth"><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>6</option><option>8</option></select></label>
+            <label title="Farben mit weniger Flächenanteil werden der ähnlichsten Farbe zugeschlagen">Mindestfläche <input type="number" id="imgMinPct" value="1" min="0" max="30" step="0.5"> %</label>
+          </div>
+          <label class="check"><input type="checkbox" id="imgBg"> Hintergrund (Farbe in den Ecken) automatisch weglassen</label>
+          <table id="imgClusters"></table>
+          <label class="check" id="imgAdoptLbl"><input type="checkbox" id="imgAdopt" checked> Filamentfarben an Bildfarben anpassen</label>
+        </div>
+        <div class="box">
+          <h4>Ausgabe</h4>
+          <div class="modes">
+            <label><input type="radio" name="imgMode" value="plate" checked> Neues Modell: Platte / Schild</label>
+            <label id="modeProjectLbl"><input type="radio" name="imgMode" value="project"> Auf das geladene Modell aufbringen</label>
+          </div>
+          <div id="optPlate" class="opts">
+            <div class="row3">
+              <label>Breite <input type="number" id="plW" value="100" min="1" step="1"> mm</label>
+              <label>Höhe <input type="number" id="plH" value="60" min="1" step="1"> mm</label>
+            </div>
+            <div class="row3">
+              <label title="Gesamtdicke der Platte (ohne Relief)">Dicke <input type="number" id="plBase" value="2" min="0" step="0.2"> mm</label>
+              <label title="Kantenlänge eines Bildpunkts">Pixelgröße <input type="number" id="plCell" value="0.4" min="0.1" step="0.1"> mm</label>
+            </div>
+            <label>Grundplatte in <select id="plBaseSlot"></select></label>
+            <div class="row3">
+              <label>Rahmen <input type="number" id="plBorder" value="0" min="0" step="0.5"> mm</label>
+              <label>in <select id="plBorderSlot"></select></label>
+              <label>+ <input type="number" id="plBorderH" value="0" min="0" step="0.2"> mm höher</label>
+            </div>
+            <p class="note" id="plInfo"></p>
+            <p class="note">Spalte „Höhe“: Farbe zusätzlich erhaben (z.&nbsp;B. Schrift +1&nbsp;mm) oder negativ eingelassen. „weglassen“ schneidet die Farbe aus.</p>
+          </div>
+          <div id="optProject" class="opts" hidden>
+            <div class="row3">
+              <label>Breite <input type="number" id="prW" value="40" min="1" step="1"> mm</label>
+              <label title="Feinheit der Konturen">Pixelgröße <input type="number" id="prCell" value="0.25" min="0.05" step="0.05"> mm</label>
+            </div>
+            <p class="note" id="prInfo"></p>
+            <p class="note">Das Bild wird exakt in die Oberfläche eingeschnitten – bündig, ohne abzustehen. Spalte „Höhe“: <b>0</b> = bündig, <b>+</b> = erhaben (z.&nbsp;B. Logo +0,8&nbsp;mm), <b>−</b> = eingraviert. Transparente/weggelassene Bereiche bleiben unverändert.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dlgfoot"><button id="imgToLogo" title="Dieses Bild im Logo-/Schild-Editor öffnen (3D-Effekte, Plattenform, Rahmen)">Logo / Schild-Editor …</button><span class="grow"></span><button id="imgCancel">Abbrechen</button><button id="imgApply" class="primary">Übernehmen</button></div>
+  </div>
+</div>
+
+<div id="logoDlg" class="modal" hidden>
+  <div class="dlg logo">
+    <h2>Logo / Schild <span id="lgName" class="muted"></span>
+      <select id="lgPreset" title="Vorlage laden – alle Werte bleiben danach einstellbar"><option value="">Vorlage …</option></select></h2>
+    <div class="dlgbody lgbody">
+      <div class="lgview">
+        <div class="lgwrap checker" id="lgWrap"><canvas id="lgPrev"></canvas><canvas id="lgOver"></canvas></div>
+        <div class="row">
+          <div class="seg seg2" id="lgShow"><button data-show="relief" class="active">Relief-Vorschau</button><button data-show="colors">Farben im Bild</button></div>
+          <span id="lgInfo" class="note"></span>
+        </div>
+        <p class="note" id="lgDrawNote" hidden><b>Bereich zeichnen:</b> Rechteck im Bild aufziehen. Esc bricht ab.</p>
+      </div>
+      <div class="lgopts">
+        <div class="tabs" id="lgTabs">
+          <button data-tab="colors" class="active">Farben &amp; Effekte</button><button data-tab="zones">Bereiche</button><button data-tab="plate">Platte &amp; Größe</button><button data-tab="frame">Rahmen</button><button data-tab="image">Bild</button>
+        </div>
+
+        <div class="tab" data-tab="colors">
+          <div class="row3">
+            <label>Farben <select id="lgK"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option></select></label>
+            <label title="Mehrheitsfilter – entfernt einzelne Pixel">Glätten <select id="lgSmooth"><option>0</option><option>1</option><option selected>2</option><option>3</option><option>4</option><option>6</option></select></label>
+            <label>Mindestfläche <input type="number" id="lgMinPct" value="0.5" min="0" max="30" step="0.5"> %</label>
+          </div>
+          <label class="check"><input type="checkbox" id="lgBg" checked> Hintergrund (Farbe in den Ecken) nicht drucken – dort ist die Platte</label>
+          <label class="check"><input type="checkbox" id="lgAdopt" checked> Filamentfarben an die Bildfarben anpassen</label>
+          <table class="lgtable" id="lgColors"></table>
+          <p class="note"><b>Effekt</b> = Form der Erhebung: <i>flach</i> (senkrechte Kanten), <i>Fase</i> und <i>abgerundet</i> (Kantenbreite unter „Kante“), <i>Kissen</i> (gewölbt), <i>nur Kontur</i> (nur der Rand steht hoch, Breite unter „Kante“).
+          <b>Höhe</b>: + steht heraus, − ist eingraviert, 0 = bündig, nur farbig.</p>
+        </div>
+
+        <div class="tab" data-tab="zones" hidden>
+          <p class="note">Bereiche überschreiben den Effekt innerhalb eines Rechtecks – z.&nbsp;B. nur die Schrift erhaben und abgerundet, das Logo gewölbt. Wahlweise für alle Farben oder nur eine Farbe im Rechteck.</p>
+          <div class="row"><button id="lgZoneAdd" class="primary">+ Bereich zeichnen</button></div>
+          <table class="lgtable" id="lgZones"></table>
+        </div>
+
+        <div class="tab" data-tab="plate" hidden>
+          <h4>Größe</h4>
+          <div class="row3">
+            <label title="Breite des Logos bzw. Bildinhalts (ohne Rand)">Logo-Breite <input type="number" data-k="widthMm" min="5" step="1"> mm</label>
+            <label title="Feinheit: kleinere Werte = genauere Kanten, mehr Dreiecke">Pixelgröße <input type="number" data-k="cellMm" min="0.05" step="0.05"> mm</label>
+          </div>
+          <h4>Grundplatte</h4>
+          <div class="row3">
+            <label>Form <select data-k="plate.shape" id="lgShape"></select></label>
+            <label class="lgrect">Ecken <select data-k="plate.corner" id="lgCorner"></select></label>
+            <label class="lgrect">Radius <input type="number" data-k="plate.radius" min="0" step="0.5"> mm</label>
+          </div>
+          <div class="row3">
+            <label title="Abstand zwischen Inhalt und Rahmen bzw. Plattenrand">Abstand zum Inhalt <input type="number" data-k="plate.pad" min="0" step="0.5"> mm</label>
+            <label class="lgcontour" title="Rundet die Kontur ab und schließt Lücken zwischen Buchstaben">Glättung <input type="number" data-k="plate.smooth" min="0" step="0.5"> mm</label>
+          </div>
+          <label class="check lgcontour"><input type="checkbox" data-k="plate.fillHoles"> Innere Löcher der Kontur füllen</label>
+          <div class="row3">
+            <label title="0 = keine Platte, nur Inhalt und Rahmen">Dicke <input type="number" data-k="plate.thickness" min="0" step="0.2"> mm</label>
+            <label>Filament <select data-k="plate.slot" data-slot></select></label>
+          </div>
+          <label class="check"><input type="checkbox" data-k="plate.colorThrough"> Inhalt durchgehend farbig (sonst nur die Oberseite)</label>
+          <h4>Zierlinie innen</h4>
+          <div class="row3">
+            <label title="0 = keine Linie">Breite <input type="number" data-k="line.width" min="0" step="0.2"> mm</label>
+            <label title="Abstand vom Rahmen bzw. Plattenrand">Abstand <input type="number" data-k="line.offset" min="0" step="0.5"> mm</label>
+            <label>Höhe <input type="number" data-k="line.height" step="0.2"> mm</label>
+            <label>Filament <select data-k="line.slot" data-slot></select></label>
+          </div>
+          <h4>Aufhängung</h4>
+          <div class="row3">
+            <label>Löcher <select data-k="hole.count" data-num><option value="0">keine</option><option value="1">1 oben mittig</option><option value="2">2 oben</option></select></label>
+            <label>Ø <input type="number" data-k="hole.d" min="1" step="0.5"> mm</label>
+            <label>Abstand vom Rand <input type="number" data-k="hole.edge" min="0" step="0.5"> mm</label>
+          </div>
+        </div>
+
+        <div class="tab" data-tab="frame" hidden>
+          <div class="framepick" id="lgFrames"></div>
+          <div class="row3">
+            <label>Breite <input type="number" data-k="frame.width" min="0.4" step="0.5"> mm</label>
+            <label title="Höhe über der Platte">Höhe <input type="number" data-k="frame.height" step="0.2"> mm</label>
+            <label>Filament <select data-k="frame.slot" data-slot></select></label>
+          </div>
+          <label class="check"><input type="checkbox" data-k="frame.through"> Rahmen durchgehend in seiner Farbe (sonst nur oben)</label>
+          <p class="note">Der Rahmen folgt immer der Plattenform – auch der Kontur um den Inhalt. Form, Ecken und Abstand stellst du unter „Platte &amp; Größe“ ein.</p>
+        </div>
+
+        <div class="tab" data-tab="image" hidden>
+          <div class="row">
+            <button id="lgRotL">⟲ 90°</button><button id="lgRotR">⟳ 90°</button>
+            <label class="check" style="margin:0"><input type="checkbox" id="lgMirror"> Spiegeln</label>
+            <button id="lgAdjReset">Zurücksetzen</button>
+          </div>
+          <label class="slider">Helligkeit <output id="lgBriO">0</output><input type="range" id="lgBri" min="-100" max="100" value="0"></label>
+          <label class="slider">Kontrast <output id="lgConO">0</output><input type="range" id="lgCon" min="-100" max="100" value="0"></label>
+          <label class="slider">Sättigung <output id="lgSatO">100 %</output><input type="range" id="lgSat" min="0" max="200" value="100"></label>
+          <figure class="lgsrc"><canvas id="lgSrc"></canvas><figcaption>Original</figcaption></figure>
+        </div>
+      </div>
+    </div>
+    <div class="dlgfoot"><span id="lgTris" class="note"></span><span class="grow"></span><button id="lgOther">Anderes Bild …</button><button id="lgCancel">Schließen</button><button id="lgApply" class="primary">Modell erzeugen</button></div>
+  </div>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+# Backups und lokale Arbeitsdateien
+_backup/
+*.zip
+*.bak
+*~
+
+# Eigene Modelle / Exporte nicht versehentlich einchecken
+*.stl
+*.3mf
+*.obj
+
+# Python / Editor / Betriebssystem
+__pycache__/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

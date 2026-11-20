@@ -8,12 +8,16 @@ import * as GRAD from './gradient.js';
 import { initLogo } from './logoui.js';
 import { initSplit } from './splitui.js';
 import { triComponents } from './split.js';
+import { initMap } from './mapui.js';
+import * as PRJ from './project.js';
 
 const $ = (id) => document.getElementById(id);
-const MAX_SLOTS = 8;
+const MAX_SLOTS = 16;
 const DEFAULT_COLORS = [
   ['Weiß', '#f2f2f2'], ['Schwarz', '#222222'], ['Rot', '#d62828'], ['Blau', '#1d4ed8'],
   ['Gelb', '#f7c600'], ['Grün', '#2a9d3f'], ['Orange', '#f77f00'], ['Lila', '#8e44ad'],
+  ['Grau', '#8d8d8d'], ['Braun', '#8a5a33'], ['Hellblau', '#7cc0f0'], ['Pink', '#ec6fb0'],
+  ['Dunkelgrün', '#2f6b35'], ['Beige', '#e3cf9a'], ['Türkis', '#1fb5a8'], ['Dunkelgrau', '#4b4b4e'],
 ];
 const COLOR_NAMES = [
   ['Weiß', [245, 245, 245]], ['Schwarz', [20, 20, 20]], ['Grau', [128, 128, 128]], ['Dunkelgrau', [75, 75, 78]], ['Hellgrau', [195, 195, 195]],
@@ -35,6 +39,7 @@ const state = {
   heightBelow: false,
   modelName: 'Modell',
   loadShift: [0, 0, 0],
+  mapProject: null, // Einstellungen des Karten-Studios, falls das Modell eine Karte ist
 };
 
 const HINTS = {
@@ -87,7 +92,7 @@ controls.update();
 const MESH_VS = /* glsl */`
 uniform sampler2D colTex;
 uniform sampler2D hiTex;
-uniform vec3 palette[8];
+uniform vec3 palette[16];
 flat out vec3 vColor;
 flat out float vHi;
 out vec3 vViewPos;
@@ -98,7 +103,7 @@ void main() {
   ivec2 uv = ivec2(tid % ${TEX_W}, tid / ${TEX_W});
   int s = int(texelFetch(colTex, uv, 0).r * 255.0 + 0.5);
   vHi = texelFetch(hiTex, uv, 0).r;
-  vColor = palette[min(s, 7)];
+  vColor = palette[min(s, 15)];
   vBary = vec3(c == 0 ? 1.0 : 0.0, c == 1 ? 1.0 : 0.0, c == 2 ? 1.0 : 0.0);
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   vViewPos = mv.xyz;
@@ -150,7 +155,7 @@ void main() {
 const uniforms = {
   colTex: { value: null },
   hiTex: { value: null },
-  palette: { value: Array.from({ length: 8 }, () => new THREE.Vector3()) },
+  palette: { value: Array.from({ length: 16 }, () => new THREE.Vector3()) },
   hiColor: { value: new THREE.Vector3(1, 1, 1) },
   wire: { value: 0 },
 };
@@ -385,6 +390,7 @@ function snapshot(geo = false) {
   gradDiscard();
   undoStack.push(capture(geo));
   redoStack.length = 0;
+  markDirty();
   let total = undoStack.reduce((s, e) => s + entryBytes(e), 0);
   while ((undoStack.length > 60 || total > UNDO_BYTES) && undoStack.length > 1) total -= entryBytes(undoStack.shift());
   updateUndoButtons();
@@ -838,6 +844,7 @@ const fmtMm = (v) => v.toFixed(1).replace('.', ',');
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 function updateInfo() {
+  $('mapEditRow').hidden = !state.mapProject;
   if (!paint) { $('modelInfo').textContent = 'Kein Modell geladen.'; $('stats').textContent = ''; return; }
   const b = paint.bbox;
   const dims = `${fmtMm(b.max[0] - b.min[0])} × ${fmtMm(b.max[1] - b.min[1])} × ${fmtMm(b.max[2] - b.min[2])} mm`;
@@ -876,6 +883,12 @@ function download(blob, name) {
 
 // ---------------------------------------------------------------- Laden / Export
 async function loadFiles(files, add) {
+  const projects = files.filter((f) => /\.3dprojekt$/i.test(f.name));
+  const tracks = files.filter((f) => map.isTrackFile(f));
+  files = files.filter((f) => !projects.includes(f) && !tracks.includes(f));
+  if (projects.length) { await openProjectFile(projects[0]); return; }
+  if (tracks.length) { map.addFiles(tracks); if (!files.length) return; }
+  if (!files.length) return;
   await withBusy('Lade Modell …', async () => {
     const parts = [];
     let paletteFrom3mf = null, maxSlot = 0;
@@ -914,6 +927,8 @@ async function loadFiles(files, add) {
       state.loadShift = [-(b0[0] + b1[0]) / 2, -(b0[1] + b1[1]) / 2, -b0[2]];
       undoStack.length = 0; redoStack.length = 0;
       state.modelName = files[0].name.replace(/\.[^.]+$/, '');
+      state.mapProject = null;
+      fileHandle = null;
       if (paletteFrom3mf && paletteFrom3mf.length) state.palette = paletteFrom3mf.slice(0, MAX_SLOTS);
     }
     while (state.palette.length <= Math.min(maxSlot, MAX_SLOTS - 1)) state.palette.push({ name: DEFAULT_COLORS[state.palette.length][0], color: DEFAULT_COLORS[state.palette.length][1] });
@@ -921,6 +936,7 @@ async function loadFiles(files, add) {
     renderPalette();
     setMesh(pm, { fit: !adding });
     updateUndoButtons();
+    markDirty();
     if (pm.n > 3_000_000) toast('Sehr großes Modell – Bedienung kann träge sein.');
   });
 }
@@ -956,7 +972,7 @@ window.addEventListener('drop', (e) => {
 });
 
 // Demo: kleines Haus (scharfe Kanten -> Eimer stoppt an jeder Fläche)
-$('btnDemo').addEventListener('click', () => withBusy('Erzeuge Demo …', () => {
+$('btnDemo').addEventListener('click', (ev) => { ev.preventDefault(); withBusy('Erzeuge Demo …', () => {
   const prof = [[-20, 0], [20, 0], [20, 25], [0, 40], [-20, 25]]; // Giebel im XZ-Profil
   const Y0 = -15, Y1 = 15, tris = [];
   const P = (k, y) => [prof[k][0], y, prof[k][1]];
@@ -978,10 +994,11 @@ $('btnDemo').addEventListener('click', () => withBusy('Erzeuge Demo …', () => 
   demo.dropToBed();
   state.modelName = 'Demo-Haus';
   state.loadShift = [0, 0, 0];
+  state.mapProject = null;
   undoStack.length = 0; redoStack.length = 0;
   setMesh(demo);
   updateUndoButtons();
-}));
+}); });
 
 // ---------------------------------------------------------------- Ebenen-Frames (für Formen und Bilder)
 function modelDiag() {
@@ -1840,11 +1857,141 @@ split = initSplit({
   },
 });
 
+
+// ---------------------------------------------------------------- Karten-Studio
+const map = initMap({
+  toast, escapeHtml,
+  setMapModel(pos, col, palette, name, project) {
+    if (paint) snapshot(true);
+    const pm = new PaintMesh(pos, col);
+    pm.dropToBed();
+    state.palette = palette.slice(0, MAX_SLOTS);
+    if (state.slot >= state.palette.length) state.slot = 0;
+    state.modelName = name;
+    state.loadShift = [0, 0, 0];
+    state.mapProject = project;
+    renderPalette();
+    setMesh(pm);
+    updateUndoButtons();
+    markDirty();
+  },
+});
+$('btnMap').addEventListener('click', () => map.open());
+$('btnMapEdit').addEventListener('click', () => map.open(state.mapProject));
+$('cardActivity').addEventListener('click', () => { map.open(); $('fileTrack').click(); });
+$('cardArea').addEventListener('click', () => { map.open(null, 'area'); setTimeout(() => document.getElementById('mpSearch').focus(), 300); });
+$('cardOpen').addEventListener('click', () => $('fileModel').click());
+$('cardLogo').addEventListener('click', () => $('btnLogo').click());
+$('btnHelp').addEventListener('click', () => { $('helpDlg').hidden = false; });
+$('helpClose').addEventListener('click', () => { $('helpDlg').hidden = true; });
+
+// ---------------------------------------------------------------- Projekte
+let fileHandle = null, dirty = false, autosaveTimer = 0;
+function markDirty() {
+  dirty = true;
+  $('saveState').textContent = '● nicht gespeichert';
+  $('saveState').className = 'muted dirty';
+  clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(autosave, 4000);
+}
+function markClean(msg = 'gespeichert') {
+  dirty = false;
+  $('saveState').textContent = '✓ ' + msg;
+  $('saveState').className = 'muted';
+}
+function projectBlob() {
+  return PRJ.projectBlob({ name: state.modelName, palette: state.palette, pos: paint.pos, col: paint.col, mapProject: state.mapProject });
+}
+async function autosave() {
+  if (!paint || !dirty) return;
+  try {
+    if (paint.n > 2_500_000) return; // sehr große Modelle nicht im Browser zwischenspeichern
+    const blob = await projectBlob();
+    await PRJ.kvSet('autosave', { name: state.modelName, savedAt: Date.now(), blob });
+    if (dirty) { $('saveState').textContent = '● nicht gespeichert (zwischengespeichert)'; }
+  } catch (e) { console.warn('Autosave', e); }
+}
+async function saveProject(as = false) {
+  if (!paint) { toast('Noch kein Modell – nichts zu speichern.'); return; }
+  try {
+    if (PRJ.canSaveDirect()) {
+      if (!fileHandle || as) fileHandle = await PRJ.pickSaveHandle(state.modelName);
+      await withBusy('Speichere Projekt …', async () => { await PRJ.saveTo(fileHandle, await projectBlob()); });
+      await PRJ.addRecent({ name: fileHandle.name, savedAt: Date.now(), handle: fileHandle });
+      markClean('gespeichert: ' + fileHandle.name);
+      toast('Projekt gespeichert: ' + fileHandle.name + ' · Strg+S speichert ab jetzt direkt in diese Datei.');
+    } else {
+      await withBusy('Speichere Projekt …', async () => download(await projectBlob(), state.modelName.replace(/[\\/:*?"<>|]+/g, '_') + PRJ.EXT));
+      markClean('heruntergeladen');
+    }
+    PRJ.kvSet('autosave', null);
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+    console.error(e); alert('Speichern fehlgeschlagen: ' + (e.message || e));
+  }
+}
+async function openProjectBuf(buf, handle = null) {
+  const p = await PRJ.readProject(buf);
+  if (paint) snapshot(true);
+  const pm = new PaintMesh(p.pos, p.col);
+  state.palette = (p.palette || []).slice(0, MAX_SLOTS);
+  if (!state.palette.length) state.palette = DEFAULT_COLORS.slice(0, 4).map(([name, color]) => ({ name, color }));
+  if (state.slot >= state.palette.length) state.slot = 0;
+  state.modelName = p.name || 'Projekt';
+  state.mapProject = p.mapProject || null;
+  state.loadShift = [0, 0, 0];
+  undoStack.length = 0; redoStack.length = 0;
+  renderPalette();
+  setMesh(pm);
+  updateUndoButtons();
+  fileHandle = handle;
+  markClean(handle ? 'geöffnet: ' + handle.name : 'geöffnet');
+  toast(`Projekt „${state.modelName}“ geöffnet` + (state.mapProject ? ' – „Karte bearbeiten“ öffnet alle Karten-Einstellungen.' : '.'));
+}
+async function openProjectFile(file, handle = null) {
+  await withBusy('Öffne Projekt …', async () => openProjectBuf(await file.arrayBuffer(), handle));
+}
+$('btnSave').addEventListener('click', () => saveProject(false));
+$('btnSaveAs').addEventListener('click', () => saveProject(true));
+window.addEventListener('beforeunload', (e) => { if (dirty && paint) { autosave(); e.preventDefault(); e.returnValue = ''; } });
+
+async function renderRecent() {
+  const list = await PRJ.recentList();
+  const auto = await PRJ.kvGet('autosave');
+  const el = $('recentList');
+  el.innerHTML = '';
+  const fmt = (t) => new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  if (auto && auto.blob) {
+    const b = document.createElement('button');
+    b.className = 'accent';
+    b.textContent = `↺ Wiederherstellen: ${auto.name} (${fmt(auto.savedAt)})`;
+    b.title = 'Automatisch zwischengespeicherter, nicht gespeicherter Stand';
+    b.addEventListener('click', () => withBusy('Stelle wieder her …', async () => { await openProjectBuf(await auto.blob.arrayBuffer()); markDirty(); }));
+    el.appendChild(b);
+  }
+  for (const r of list) {
+    if (!r.handle) continue;
+    const b = document.createElement('button');
+    b.textContent = `${r.name} · ${fmt(r.savedAt)}`;
+    b.addEventListener('click', async () => {
+      try {
+        if ((await r.handle.queryPermission({ mode: 'readwrite' })) !== 'granted') await r.handle.requestPermission({ mode: 'readwrite' });
+        await openProjectFile(await r.handle.getFile(), r.handle);
+      } catch (e) { toast('Datei nicht mehr verfügbar: ' + (e.message || e)); }
+    });
+    el.appendChild(b);
+  }
+  $('recent').hidden = !el.children.length;
+}
+renderRecent();
+
 // ---------------------------------------------------------------- Tastatur
 window.addEventListener('keydown', (e) => {
   const ae = document.activeElement, tag = ae && ae.tagName;
   const typing = (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'color'].includes(ae.type)) || tag === 'SELECT' || tag === 'TEXTAREA';
-  if (logo.isOpen()) return; // eigener Dialog mit eigener Tastenbehandlung
+  if (logo.isOpen() || map.isOpen()) return; // eigene Dialoge mit eigener Tastenbehandlung
+  if (e.key === 'F1') { e.preventDefault(); $('helpDlg').hidden = false; return; }
+  if (!$('helpDlg').hidden) { if (e.key === 'Escape') $('helpDlg').hidden = true; return; }
   if (e.key === 'Escape') {
     if (!$('imgDlg').hidden) closeImageDialog();
     else if (shapeDraw) cancelShape();
@@ -1857,7 +2004,8 @@ window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && k === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'y') { e.preventDefault(); redo(); return; }
   if ((e.ctrlKey || e.metaKey) && k === 'o') { e.preventDefault(); $('fileModel').click(); return; }
-  if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); $('btnExport').click(); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 's') { e.preventDefault(); saveProject(e.shiftKey); return; }
+  if ((e.ctrlKey || e.metaKey) && k === 'e') { e.preventDefault(); $('btnExport').click(); return; }
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === ' ') { e.preventDefault(); if (!spaceDown) { spaceDown = true; updateMouseButtons(); hoverDirty = true; canvas.style.cursor = 'grab'; } return; }
   if (e.key === 'Shift') { hoverDirty = true; if (hover) hover.shift = true; return; }
@@ -1872,7 +2020,7 @@ window.addEventListener('keydown', (e) => {
   }
   const tools = { v: 'view', b: 'brush', t: 'tri', f: 'fill', r: 'rect', k: 'shape', h: 'height', i: 'pick', l: 'flat', g: 'grad', s: 'split' };
   if (tools[k]) { setTool(tools[k]); return; }
-  if (/^[1-8]$/.test(e.key)) { selectSlot(+e.key - 1); return; }
+  if (/^[1-9]$/.test(e.key)) { selectSlot(+e.key - 1); return; }
   if (e.key === '[') setBrushR(state.brushR / 1.2);
   else if (e.key === ']') setBrushR(state.brushR * 1.2);
   else if (k === 'w') { const c = $('showWire'); c.checked = !c.checked; c.dispatchEvent(new Event('change')); }
@@ -1907,4 +2055,4 @@ function loop() {
 loop();
 
 // Für Tests/Debugging
-window.app = { state, get paint() { return paint; }, get split() { return split; }, setMesh, PaintMesh, loadFiles, IO, IMG, logo, setTool, undo, fitView, snap() { renderer.render(scene, camera); return canvas.toDataURL(); } };
+window.app = { state, get paint() { return paint; }, get split() { return split; }, setMesh, PaintMesh, loadFiles, IO, IMG, logo, map, setTool, undo, fitView, saveProject, projectBlob, openProjectBuf, camera, controls, requestRender, snap() { renderer.render(scene, camera); return canvas.toDataURL(); } };

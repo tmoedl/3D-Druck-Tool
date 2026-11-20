@@ -1,15 +1,31 @@
 # 3D-Druck-Tool – STL-Farbeditor
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green)
 ![Läuft im Browser](https://img.shields.io/badge/l%C3%A4uft-offline%20im%20Browser-orange)
 
-Fertige 3D-Modelle (STL/OBJ/3MF) **mehrfarbig bemalen**, Logos in **druckfertige Schilder**
-verwandeln und große Modelle **in druckbare Teile zerlegen** – direkt im Browser, komplett
-offline, ohne Installation. Exportiert wird ein 3MF für den **Anycubic Slicer Next** (ACE Pro);
-das Format lesen auch OrcaSlicer, Bambu Studio und PrusaSlicer.
+**3D-Karten aus Aktivitäten** (GPX/FIT/TCX, z.&nbsp;B. Strava) und Gebieten erzeugen – mit echten
+Höhen, Wald, Wasser, Orten, Routen und Statistik –, fertige 3D-Modelle (STL/OBJ/3MF)
+**mehrfarbig bemalen**, Logos in **druckfertige Schilder** verwandeln und große Modelle **in
+druckbare Teile zerlegen** – direkt im Browser, ohne Installation. Exportiert wird ein 3MF für
+den **Anycubic Slicer Next** (ACE Pro); das Format lesen auch OrcaSlicer, Bambu Studio und PrusaSlicer.
 
-![Editor mit bemaltem Demo-Modell](docs/images/editor.png)
+![3D-Karte einer Beispiel-Aktivität am Eibsee im Editor](docs/images/karte-editor.png)
+
+## Neu in 1.1: Karten-Studio
+
+Aktivität ablegen – fertig ist ein Vorschlag: Ausschnitt, Format, Überhöhung, Farben, Titel
+und Statistik passend zur Sportart. Danach ist alles einstellbar.
+
+| | |
+|---|---|
+| ![Ausschnitt wählen](docs/images/karte-2d.jpg) | ![3D-Vorschau](docs/images/karte-3d.png) |
+| **Ausschnitt** per 2D-Karte: verschieben und zoomen, der Rahmen ist das Gebiet. Routen liegen exakt auf der Karte | **3D-Vorschau** mit Untergrund aus OpenStreetMap: Wald, Wiese, Acker, Siedlung, Wasser, Fels, Gletscher, Gebäude, Straßen |
+| ![Beschriftung](docs/images/karte-text.png) | ![Stecksystem](docs/images/stecksystem.png) |
+| **Beschriftung**: Titel und Statistik-Zeilen mit Platzhaltern, Werte überschreibbar (z.&nbsp;B. offizielle Gesamtzeit), Ortsnamen und Gipfel | **Stecksystem**: Bilderrahmen für Fotoabzüge, Medaillenhalter und Textschild werden von hinten mit Verbindern an die Karte gesteckt |
+
+Die Beispiel-Aktivitäten (Button **„Beispiel laden“** im Studio, Dateien in `docs/demo/`) sind
+fiktiv; die Strecke ist aus öffentlichen Höhendaten abgeleitet.
 
 ## Funktionen auf einen Blick
 
@@ -20,9 +36,11 @@ das Format lesen auch OrcaSlicer, Bambu Studio und PrusaSlicer.
 | ![Logo-Dialog](docs/images/logo-dialog.png) | ![Erzeugtes Schild](docs/images/logo-modell.png) |
 | **Logo / Schild-Editor** mit Relief-Vorschau, Effekten, Plattenformen und Rahmen | … ergibt ein fertiges, mehrfarbiges Schild als 3D-Modell |
 
+- **Karten-Studio:** 3D-Karten aus GPX/FIT/TCX oder einem gesuchten Gebiet – echte Höhen, Untergrund, Routen, Beschriftung, Rahmen, Stecksystem
+- **Projekte speichern** (`.3dprojekt`): Modell, Farben und alle Karten-Einstellungen; Strg+S speichert direkt in die Datei
 - **Malwerkzeuge:** Pinsel, Dreieck, Eimer, Rechteck, Höhe, Pipette, exakte Formen (Kreis, Rechteck, Polygon, Lasso) – bündig, erhaben oder eingraviert
 - **Bilder** als farbige Platte erzeugen oder exakt auf die Modelloberfläche aufbringen
-- **Bis zu 8 Filamente**, Rückgängig/Wiederholen, Drehen, Spiegeln, Skalieren, Hinlegen, Unterteilen
+- **Bis zu 16 Filamente**, Rückgängig/Wiederholen, Drehen, Spiegeln, Skalieren, Hinlegen, Unterteilen
 - **3MF-Export** mit Farbe pro Dreieck; exportierte Dateien lassen sich wieder öffnen
 
 ## Download
@@ -51,10 +69,20 @@ installiert, wird es benutzt; sonst startet ein eingebauter PowerShell-Webserver
 es muss also nichts installiert werden. Anderer Port: `start.bat -Port 8766`.
 
 Beides öffnet `http://localhost:8765` im Browser. Ein lokaler Server ist nötig, weil
-Browser JavaScript-Module nicht direkt von der Festplatte laden. Alles läuft
-offline; three.js liegt in `vendor/`.
+Browser JavaScript-Module nicht direkt von der Festplatte laden. Der Editor läuft
+offline; three.js und Leaflet liegen in `vendor/`. Nur das Karten-Studio braucht Internet
+(Höhendaten, OpenStreetMap, Kartenhintergrund); geladene Gebiete werden im Browser
+zwischengespeichert.
+
+Auf der Startseite gibt es vier Einstiege: **Aktivität als 3D-Karte**, **3D-Karte eines
+Gebiets**, **Modell oder Projekt öffnen** und **Logo / Schild**. Darunter erscheint
+„Zuletzt bearbeitet“.
+
+![Startseite](docs/images/start.png)
 
 ## Bedienung
+
+![Editor mit bemaltem Demo-Modell](docs/images/editor.png)
 
 | Maus / Taste | Funktion |
 |---|---|
@@ -62,10 +90,13 @@ offline; three.js liegt in `vendor/`.
 | Mittlere Maustaste | verschieben |
 | Mausrad | zoomen |
 | Leertaste + Links | drehen (in jedem Werkzeug) |
-| 1–8 | Filament wählen |
+| 1–9 | Filament wählen |
 | Strg + Malen | mit Filament 1 malen (Radierer) |
 | Alt + Klick | Farbe aufnehmen |
 | Strg+Z / Strg+Y | Rückgängig / Wiederholen |
+| Strg+S / Strg+Umschalt+S | Projekt speichern / speichern unter |
+| Strg+E | 3MF exportieren |
+| F1 | Hilfe und alle Tastenkürzel |
 | `[` `]` | Pinsel kleiner / größer (beim Bild-Platzieren: Bildgröße) |
 | `,` `.` | Bild beim Platzieren drehen |
 | Enter / Rücktaste / Esc | Polygon schließen / Punkt entfernen / abbrechen |
@@ -88,6 +119,86 @@ offline; three.js liegt in `vendor/`.
 **Feine Details:** Bemalt wird pro Dreieck. Große, flache Dreiecke (typisch bei
 CAD-Exporten) lassen sich deshalb nur als Ganzes färben. Abhilfe schafft
 *Modell → Unterteilen bis X mm*, das lange Kanten halbiert, ohne die Form zu ändern.
+
+## Karten-Studio (3D-Karten)
+
+*Karte / Aktivität…* in der Kopfleiste oder die Kacheln auf der Startseite öffnen das Studio.
+Links wählst du den Ausschnitt (2D-Karte) bzw. siehst die 3D-Vorschau, rechts sind die
+Einstellungen in Reitern. **Modell erzeugen** übernimmt die Karte in den Editor; dort kann
+weiter bemalt, geteilt, gespeichert und exportiert werden. *Karte bearbeiten…* (rechts unter
+„Modell“) öffnet später wieder alle Einstellungen – auch nach dem Speichern als Projekt.
+
+**Aktivitäten:** GPX, TCX und FIT, auch als `.gz` direkt aus dem Strava-Export
+(`activities/…`). Mehrere Dateien gleichzeitig – jede Route bekommt eine eigene Farbe,
+Breite, Darstellung (erhaben, bündig, Rinne), Höhe, Glättung und Start-/Ziel-Markierung.
+Multisport-FIT-Dateien (Triathlon) werden in Teilstrecken getrennt. Einheiten ohne GPS
+(Hallenbad) werden nicht gezeichnet, zählen aber für Statistik und Gesamtzeit.
+
+> **Warum die Linie immer passt:** Gelände, Untergrund, Routen und Text werden auf demselben
+> Raster in derselben Projektion (Web-Mercator, wie die 2D-Karte) berechnet. Die Höhe einer
+> Route kommt nicht aus der GPS-Höhe, sondern aus dem Gelände an genau dieser Stelle. Ein Test
+> prüft, dass jeder GPS-Punkt höchstens eine halbe Rasterzelle neben der gedruckten Linie liegt.
+
+**Gebiet & Größe:** Ortssuche, Zoomen = Gebiet größer/kleiner, Breite in km, „Auf Routen
+einpassen“ mit Rand, Form *Rechteck*, *abgerundet*, *Kreis*, *Sechseck*, Seitenverhältnis,
+Kartenbreite in mm und Auflösung (Netzfeinheit). Angezeigt werden Gesamtmaß, Maßstab und
+geschätzte Dreieckszahl, mit Hinweis, wenn das Druckbett zu klein ist.
+
+**Gelände:** *Überhöhung* (1–8×) – damit wirken auch flache Hügel –, oder eine feste
+Relief-Höhe in mm. Dazu Grunddicke, Glättung und „Meer als ebene Wasserfläche“.
+Höhendaten: AWS Terrain Tiles (in Europa meist ca. 5–30 m Auflösung).
+
+**Untergrund:** aus OpenStreetMap – Wald, Wiese/Grünfläche, Acker, Siedlung, Wasser (Seen
+eben und leicht vertieft, Flüsse als Rinne), Fels/Geröll, Gletscher. Jedem Untergrund ist ein
+Filament zugeordnet. Optional **Gebäude** als Klötzchen (Höhe aus OSM, mit Faktor; sinnvoll
+für kleine Gebiete) und **Straßen** (Haupt- oder alle Straßen, nur Farbe oder erhaben).
+Alternativ Färbung nach **Höhenstufen** oder **einfarbig**. Der Untergrund wird im Hintergrund
+geladen; das Gelände ist sofort zu sehen.
+
+**Beschriftung:** Titel und bis zu zwei Zeilen mit Platzhaltern – `{name}`, `{datum}`,
+`{distanz}`, `{zeit}`, `{bewegungszeit}`, `{pace}`, `{hm}`, `{maxhoehe}`, `{sport}`,
+`{gesamtzeit}`, bei mehreren Aktivitäten auch `{1.zeit}`, `{2.distanz}` … Unter *Werte selbst
+eintragen* lässt sich jeder Wert überschreiben, z.&nbsp;B. die offizielle Triathlon-Gesamtzeit.
+Position in der Titelleiste oder in einer Kartenecke; Darstellung *erhaben (folgt dem
+Gelände)*, *eben, abgehoben* (schwebt eben über dem höchsten Punkt), *auf Plakette*,
+*eingraviert* oder *nur farbig*. Ortsnamen und Gipfel werden auf Wunsch automatisch
+beschriftet, ohne sich gegenseitig oder die Route zu überdecken.
+
+**Rahmen:** Breite, Höhe (auch „bis Gipfelhöhe“), Titelleiste oben/unten/keine.
+
+**Farben:** Anzahl verfügbarer Filamente (4, 8 oder 16) – die Zuordnung wird automatisch
+gewählt und kann pro Untergrund, Rahmen, Schrift usw. geändert werden.
+
+### Stecksystem
+
+Module, die an die Karte angesetzt und **von hinten mit Doppel-T-Verbindern** zusammengesteckt
+werden; das Ganze hängt an Aufhängeschlitzen für Nagel oder Schraube an der Wand.
+
+| Modul | Beschreibung |
+|---|---|
+| Bilderrahmen | für Fotoabzüge 9×13, 10×15, 13×18, 10×10, 13×13, 15×20 cm oder eigenes Maß, hochkant oder quer; das Foto wird von oben eingeschoben |
+| Medaillenhalter | Leiste mit Haken (Anzahl automatisch oder fest), optional Text wie „FINISHER“ |
+| Textschild | eigener Text, auch mit Platzhaltern (z.&nbsp;B. `{name}`, `{datum}`) |
+
+Je Seite (oben, unten, links, rechts) lässt sich ein Modul wählen. Die Verbinder werden an
+allen gemeinsamen Kanten verteilt, die Taschen sitzen exakt halb in jedem Modul. Spiel,
+Moduldicke und Abstand sind einstellbar; die Verbinder (+1 Reserve) werden mit erzeugt.
+Beim 3MF-Export ist jedes Teil ein eigenes Objekt.
+
+| Benötigt | Anzahl |
+|---|---|
+| Verbinder (gedruckt) | wird im Studio angezeigt |
+| Nagel oder Schraube mit Kopf ≤ 7 mm | 1–2 |
+| Fotoabzug | 1 je Bilderrahmen |
+
+## Projekte speichern
+
+**Speichern** (Strg+S) schreibt ein Projekt `.3dprojekt` mit Modell, Farben und – bei Karten –
+allen Studio-Einstellungen inklusive Routen. In Chrome und Edge wählst du einmal den
+Speicherort; danach speichert Strg+S ohne Rückfrage direkt in dieselbe Datei. In anderen
+Browsern wird die Datei heruntergeladen. **unter…** speichert unter neuem Namen. Zusätzlich
+wird automatisch im Browser zwischengespeichert; auf der Startseite erscheinen der letzte
+Stand und zuletzt gespeicherte Projekte.
 
 ## Bild importieren
 
@@ -206,10 +317,28 @@ jedes Teil auf seine größte ebene Fläche und verteilt alle auf dem Druckbett.
 
 ## Export
 
-*3MF exportieren* (Strg+S) schreibt die Bemalung pro Dreieck. Filament *n* im
+*3MF exportieren* (Strg+E) schreibt die Bemalung pro Dreieck. Filament *n* im
 Editor entspricht Filament *n* im Slicer, der Slicer braucht also mindestens
 so viele Filamente wie verwendet. Exportierte 3MF-Dateien lassen sich wieder
 öffnen; Farben und Filamentnamen bleiben dabei erhalten.
+
+## Datenquellen
+
+- Höhen: [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) (Mapzen; u.&nbsp;a. SRTM, EU-DEM, NED)
+- Untergrund, Orte: © [OpenStreetMap](https://www.openstreetmap.org/copyright)-Mitwirkende, ODbL, über die Overpass-API
+- Kartenhintergrund im Studio: OpenTopoMap (CC-BY-SA) bzw. OpenStreetMap
+- Ortssuche: Nominatim
+
+Bitte die Nutzungsbedingungen der Dienste beachten; das Studio lädt nur, was für den
+gewählten Ausschnitt nötig ist, und speichert es im Browser zwischen.
+
+## Tests
+
+```bash
+node tests/test_terrain.mjs   # Kartennetz dicht/mannigfaltig, Track-Lage, Ausrichtung
+node tests/test_modules.mjs   # Stecksystem: Module dicht, Verbinder passt in die Taschen
+node tests/test_gpx.mjs       # FIT-Parser (synthetische Datei), Multisport, Statistik
+```
 
 ## Dateien
 
@@ -224,6 +353,14 @@ so viele Filamente wie verwendet. Exportierte 3MF-Dateien lassen sich wieder
 - `js/gradient.js`: Farbverlauf (Raster, Rauschen, Streifen)
 - `js/split.js`: Teilen – ebener Schnitt mit Deckeln, Verbinder, Kantenzug, kleinster Querschnitt, Anordnen
 - `js/splitui.js`: Werkzeug „Teilen“
+- `js/mapui.js`: Karten-Studio (2D-Ausschnitt, 3D-Vorschau, Einstellungen, Vorschlag)
+- `js/terrain.js`: Kartennetz – Gelände, Untergrund, Routen, Text, Rahmen, Taschen
+- `js/geo.js`: Höhenkacheln, OpenStreetMap (Overpass), Ortssuche, Zwischenspeicher
+- `js/gpx.js`: GPX/TCX/FIT lesen, Statistik, Platzhalter
+- `js/modules.js`: Stecksystem – Säulen-Vermascher, Bilderrahmen, Medaillenhalter, Textschild, Verbinder
+- `js/project.js`: Projekte speichern/öffnen, Zwischenspeicher
+- `docs/demo/`: fiktive Beispiel-Aktivitäten
+- `tests/`: Node-Tests
 - `start.sh` (Linux/macOS), `start.bat` + `start.ps1` (Windows), `server.py`: lokaler Webserver
 - `vendor/`: three.js r170 (MIT)
 - `docs/images/`: Screenshots für diese Beschreibung
@@ -242,4 +379,5 @@ jede Version ist als Git-Tag `vX.Y.Z` markiert.
 
 ## Lizenz
 
-[MIT](LICENSE). Enthält [three.js](https://threejs.org/) (MIT, © Three.js Authors).
+[MIT](LICENSE). Enthält [three.js](https://threejs.org/) (MIT, © Three.js Authors) und
+[Leaflet](https://leafletjs.com/) (BSD-2-Clause, © Volodymyr Agafonkin, CloudMade; siehe `vendor/leaflet/LICENSE`).

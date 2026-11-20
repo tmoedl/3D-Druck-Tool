@@ -11,7 +11,7 @@ TYPES = {
     '.mjs': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
     '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png',
     '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.ico': 'image/x-icon',
-    '.md': 'text/plain; charset=utf-8', '.wasm': 'application/wasm',
+    '.md': 'text/plain; charset=utf-8', '.wasm': 'application/wasm', '.gpx': 'application/gpx+xml',
 }
 
 

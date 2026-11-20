@@ -3,29 +3,43 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>STL-Farbeditor</title>
+<title>3D-Druck-Tool</title>
+<link rel="stylesheet" href="vendor/leaflet/leaflet.css">
 <link rel="stylesheet" href="style.css">
+<script src="vendor/leaflet/leaflet.js"></script>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.js", "three/addons/": "./vendor/addons/" } }
 </script>
 </head>
 <body>
 <header id="topbar">
-  <div class="brand">STL&#8209;Farbeditor <span class="version" title="Version">v1.0.0</span></div>
-  <button id="btnOpen" title="STL, OBJ oder 3MF öffnen (Strg+O)">Öffnen…</button>
-  <button id="btnAdd" title="Weitere Teile zum aktuellen Modell hinzufügen">Teil hinzufügen…</button>
-  <button id="btnImage" title="Bild als farbige Platte erzeugen oder auf das Modell projizieren">Bild importieren…</button>
-  <button id="btnPlaceAgain" hidden title="Das zuletzt verwendete Bild noch einmal platzieren – auch auf einem anderen geöffneten Modell">Letztes Bild platzieren</button>
-  <button id="btnLogo" title="Logo als Schild mit 3D-Effekten, Plattenform und Rahmen">Logo / Schild…</button>
+  <div class="brand">3D&#8209;Druck&#8209;Tool <span class="version" title="Version">v1.1.0</span></div>
+  <div class="grp">
+    <button id="btnOpen" title="Modell (STL, OBJ, 3MF) oder Projekt (.3dprojekt) öffnen (Strg+O)">📂 Öffnen…</button>
+    <button id="btnSave" title="Projekt speichern – alles bleibt bearbeitbar, auch Karten-Einstellungen (Strg+S)">💾 Speichern</button>
+    <button id="btnSaveAs" class="small" title="Projekt unter neuem Namen speichern (Strg+Umschalt+S)">unter…</button>
+  </div>
   <span class="sep"></span>
-  <button id="btnUndo" title="Rückgängig (Strg+Z)">↶ Rückgängig</button>
+  <div class="grp">
+    <span class="grplabel">Erstellen</span>
+    <button id="btnMap" class="accent" title="3D-Karte aus einer Aktivität (GPX/FIT/TCX) oder einem Gebiet – mit echten Höhen, Wald, Wasser, Orten und Rahmen">⛰ Karte / Aktivität…</button>
+    <button id="btnLogo" title="Logo als Schild mit 3D-Effekten, Plattenform und Rahmen">Logo / Schild…</button>
+    <button id="btnImage" title="Bild als farbige Platte erzeugen oder auf das Modell projizieren">Bild…</button>
+    <button id="btnPlaceAgain" hidden title="Das zuletzt verwendete Bild noch einmal platzieren – auch auf einem anderen geöffneten Modell">Letztes Bild platzieren</button>
+    <button id="btnAdd" title="Weitere Teile zum aktuellen Modell hinzufügen">+ Teil…</button>
+  </div>
+  <span class="sep"></span>
+  <button id="btnUndo" title="Rückgängig (Strg+Z)">↶</button>
   <button id="btnRedo" title="Wiederholen (Strg+Y)">↷</button>
   <span class="grow"></span>
-  <button id="btnExport" class="primary" title="3MF für Anycubic Slicer Next / OrcaSlicer / Bambu Studio">3MF exportieren</button>
-  <input type="file" id="fileModel" accept=".stl,.obj,.3mf" multiple hidden>
+  <span id="saveState" class="muted" title="Speicherstatus"></span>
+  <button id="btnHelp" title="Tastenkürzel und Hilfe (F1)">?</button>
+  <button id="btnExport" class="primary" title="3MF für Anycubic Slicer Next / OrcaSlicer / Bambu Studio (Strg+E)">3MF exportieren</button>
+  <input type="file" id="fileModel" accept=".stl,.obj,.3mf,.3dprojekt" multiple hidden>
   <input type="file" id="fileAdd" accept=".stl,.obj,.3mf" multiple hidden>
   <input type="file" id="fileImage" accept="image/*" hidden>
   <input type="file" id="fileLogo" accept="image/*" hidden>
+  <input type="file" id="fileTrack" accept=".gpx,.tcx,.fit,.gz" multiple hidden>
 </header>
 
 <div id="main">
@@ -48,9 +62,15 @@
     <div id="rect" hidden></div>
     <div id="empty">
       <div class="emptybox">
-        <h1>STL hier hineinziehen</h1>
-        <p>oder <b>Öffnen…</b> (STL, OBJ, 3MF) · Bilder (PNG/JPG) werden als farbige Platte importiert</p>
-        <button id="btnDemo">Demo-Modell laden</button>
+        <h1>Was möchtest du drucken?</h1>
+        <div class="cards">
+          <button class="card" id="cardActivity"><span class="ico">🏃</span><b>Aktivität als 3D-Karte</b><small>GPX, FIT oder TCX (z.&nbsp;B. Strava-Export) ablegen – du bekommst sofort einen fertigen Vorschlag</small></button>
+          <button class="card" id="cardArea"><span class="ico">⛰</span><b>3D-Karte eines Gebiets</b><small>Ort suchen, Ausschnitt wählen – echte Höhen, Wald, Wasser, Orte</small></button>
+          <button class="card" id="cardOpen"><span class="ico">📂</span><b>Modell oder Projekt öffnen</b><small>STL, OBJ, 3MF bemalen · gespeicherte Projekte weiterbearbeiten</small></button>
+          <button class="card" id="cardLogo"><span class="ico">🏷</span><b>Logo / Schild</b><small>Aus einem Bild ein mehrfarbiges Schild mit Rahmen</small></button>
+        </div>
+        <div id="recent" hidden><h4>Zuletzt bearbeitet</h4><div id="recentList"></div></div>
+        <p class="note">Dateien einfach hier hineinziehen · <a href="#" id="btnDemo">Demo-Modell laden</a></p>
       </div>
     </div>
     <div id="busy" hidden></div>
@@ -59,7 +79,7 @@
 
   <aside id="panel">
     <section>
-      <h3>Filamente <small>(Taste 1–8)</small></h3>
+      <h3>Filamente <small>(Taste 1–9)</small></h3>
       <div id="palette"></div>
       <div class="row">
         <button id="btnAddSlot">+ Filament</button>
@@ -283,6 +303,7 @@
     <section>
       <h3>Modell</h3>
       <div id="modelInfo" class="note">Kein Modell geladen.</div>
+      <div class="row" id="mapEditRow" hidden><button id="btnMapEdit" class="accent" title="Karten-Studio mit allen Einstellungen dieser Karte öffnen">⛰ Karte bearbeiten…</button></div>
       <div class="grid3">
         <button data-rot="x,90">X +90°</button><button data-rot="y,90">Y +90°</button><button data-rot="z,90">Z +90°</button>
         <button data-rot="x,-90">X −90°</button><button data-rot="y,-90">Y −90°</button><button data-rot="z,-90">Z −90°</button>
@@ -485,6 +506,212 @@
       </div>
     </div>
     <div class="dlgfoot"><span id="lgTris" class="note"></span><span class="grow"></span><button id="lgOther">Anderes Bild …</button><button id="lgCancel">Schließen</button><button id="lgApply" class="primary">Modell erzeugen</button></div>
+  </div>
+</div>
+<div id="mapDlg" class="modal" hidden>
+  <div class="dlg map">
+    <h2>⛰ Karten-Studio <span id="mpName" class="muted"></span>
+      <span class="grow"></span>
+      <button id="mpSuggest" title="Aus den geladenen Aktivitäten einen stimmigen Vorschlag erstellen – alles bleibt danach einstellbar">✨ Vorschlag</button>
+    </h2>
+    <div class="dlgbody mpbody">
+      <div class="mpview">
+        <div class="seg seg2 mpviewseg" id="mpViewSeg"><button data-v="2d" class="active">① Ausschnitt (2D-Karte)</button><button data-v="3d">② 3D-Vorschau</button></div>
+        <div class="mpstage">
+          <div id="mpLeaflet"></div>
+          <div id="mpFinder"><div class="mpfr"></div><span class="mpfrlbl" id="mpFinderLbl"></span></div>
+          <div id="mp3d" hidden><canvas id="mpCanvas"></canvas><div id="mpBusy" hidden></div></div>
+          <div class="mpsearch">
+            <input type="text" id="mpSearch" placeholder="Ort, Berg oder Adresse suchen …" autocomplete="off">
+            <div id="mpResults" hidden></div>
+          </div>
+        </div>
+        <p class="note" id="mpHint">Karte verschieben und zoomen – <b>der Rahmen ist der Ausschnitt</b>. Weiter herauszoomen = größeres Gebiet.</p>
+      </div>
+      <div class="mpopts">
+        <div class="tabs" id="mpTabs">
+          <button data-tab="act" class="active">Aktivitäten</button><button data-tab="area">Gebiet &amp; Größe</button><button data-tab="terrain">Gelände</button><button data-tab="surface">Untergrund</button><button data-tab="text">Beschriftung</button><button data-tab="frame">Rahmen</button><button data-tab="mods">Stecksystem</button><button data-tab="colors">Farben</button>
+        </div>
+
+        <div class="tab" data-tab="act">
+          <div class="drop" id="mpDrop"><b>GPX, FIT oder TCX hier ablegen</b><br><small>mehrere möglich – z.&nbsp;B. alle Teile eines Triathlons</small><br><button id="mpAddTrack" class="primary">Dateien wählen…</button> <button id="mpDemo" title="Fiktive Beispiel-Aktivitäten am Eibsee laden (Lauf + Schwimmen)">Beispiel laden</button></div>
+          <div id="mpTracks"></div>
+          <p class="note">Jede Route bekommt eine eigene Farbe. Die Linie wird direkt aus den Höhendaten unter der Route berechnet und liegt deshalb immer exakt auf dem Gelände – die GPS-Höhe wird nicht verwendet.</p>
+        </div>
+
+        <div class="tab" data-tab="area" hidden>
+          <h4>Ausschnitt</h4>
+          <div class="row3">
+            <label title="Breite des Gebiets in der Natur">Gebiet <input type="number" id="mpWidthKm" min="0.2" step="0.1"> km breit</label>
+            <button id="mpFitTracks" title="Ausschnitt so legen, dass alle Routen mit etwas Rand hineinpassen">Auf Routen einpassen</button>
+          </div>
+          <label class="slider">Rand um die Routen <output id="mpMarginO"></output><input type="range" id="mpMargin" min="0" max="60" step="1" value="12"></label>
+          <h4>Form</h4>
+          <div class="shapepick" id="mpShape">
+            <button data-s="rect">▭<small>Rechteck</small></button><button data-s="round">▢<small>abgerundet</small></button><button data-s="circle">◯<small>Kreis</small></button><button data-s="hex">⬡<small>Sechseck</small></button>
+          </div>
+          <div class="row3" id="mpAspectRow">
+            <label>Seitenverhältnis <select id="mpAspect"><option value="1">1 : 1 quadratisch</option><option value="0.75">4 : 3 quer</option><option value="1.3333">3 : 4 hoch</option><option value="0.6667">3 : 2 quer</option><option value="1.5">2 : 3 hoch</option><option value="0.7071">A-Format quer</option><option value="1.4142">A-Format hoch</option><option value="0.5">2 : 1 Panorama</option></select></label>
+            <label id="mpRadiusL">Eckenradius <input type="number" id="mpRadius" min="0" step="1" value="8"> mm</label>
+          </div>
+          <h4>Druckgröße</h4>
+          <div class="row3">
+            <label title="Breite der Karte ohne Rahmen">Kartenbreite <input type="number" id="mpSize" min="20" step="5"> mm</label>
+            <label title="Feinheit des Netzes. Kleiner = feiner, mehr Dreiecke">Auflösung <select id="mpRes"><option value="0.25">sehr fein (0,25 mm)</option><option value="0.35">fein (0,35 mm)</option><option value="0.5">normal (0,5 mm)</option><option value="0.8">grob (0,8 mm)</option></select></label>
+          </div>
+          <p class="note" id="mpAreaInfo"></p>
+        </div>
+
+        <div class="tab" data-tab="terrain" hidden>
+          <label class="slider" title="Höhen verstärken – damit auch flache Hügel gut zu sehen sind">Überhöhung <output id="mpExagO"></output><input type="range" id="mpExag" min="1" max="8" step="0.1" value="1.5"></label>
+          <label class="check"><input type="checkbox" id="mpAutoRelief"> Relief-Höhe fest vorgeben: <input type="number" id="mpRelief" value="18" min="1" step="1" style="width:56px"> mm vom tiefsten bis zum höchsten Punkt</label>
+          <div class="row3">
+            <label title="Dicke unter dem tiefsten Punkt">Grunddicke <input type="number" id="mpBase" value="3" min="0.6" step="0.5"> mm</label>
+            <label title="Glättet Rauschen in den Höhendaten">Glättung <input type="number" id="mpSmooth" value="0.6" min="0" step="0.2"> mm</label>
+          </div>
+          <label class="check"><input type="checkbox" id="mpSea" checked> Meer (Höhe ≤ 0 m) als ebene Wasserfläche</label>
+          <p class="note" id="mpTerrainInfo"></p>
+        </div>
+
+        <div class="tab" data-tab="surface" hidden>
+          <div class="seg seg3" id="mpSurfMode"><button data-m="osm">Untergrund (Karte)</button><button data-m="hyps">Höhenstufen</button><button data-m="mono">einfarbig</button></div>
+          <div id="mpSurfOsm">
+            <table class="lgtable" id="mpClasses"></table>
+            <div class="row3">
+              <label title="Seen werden eben und um diesen Wert vertieft">Wasser vertieft <input type="number" id="mpWaterDepth" value="0.5" min="0" step="0.1"> mm</label>
+              <label class="check"><input type="checkbox" id="mpRivers" checked> Flüsse</label>
+            </div>
+            <h4>Gebäude</h4>
+            <label class="check"><input type="checkbox" id="mpBuild"> Gebäude als Klötzchen (für kleine Gebiete, &lt; 4 km)</label>
+            <div class="row3"><label>Höhe ×<input type="number" id="mpBuildF" value="2" min="0.2" step="0.5"></label><label>mind. <input type="number" id="mpBuildMin" value="0.6" min="0.2" step="0.2"> mm</label></div>
+            <h4>Straßen &amp; Wege</h4>
+            <label class="check"><input type="checkbox" id="mpRoads"> Straßen anzeigen</label>
+            <div class="row3"><label><select id="mpRoadLevel"><option value="major">Hauptstraßen</option><option value="all">alle Straßen und Wege</option></select></label>
+              <label>Breite <input type="number" id="mpRoadW" value="0.8" min="0.3" step="0.1"> mm</label><label>erhaben <input type="number" id="mpRoadRaise" value="0.2" min="0" step="0.1"> mm</label></div>
+          </div>
+          <div id="mpSurfHyps" hidden>
+            <label>Stufen <select id="mpHypsN"><option>2</option><option>3</option><option selected>4</option><option>5</option><option>6</option></select></label>
+            <p class="note">Färbt nach Höhe, z.&nbsp;B. grün im Tal, braun am Hang, weiß am Gipfel. Filamente unter „Farben“.</p>
+          </div>
+          <p class="note" id="mpOsmInfo"></p>
+        </div>
+
+        <div class="tab" data-tab="text" hidden>
+          <h4>Titel &amp; Statistik</h4>
+          <label>Titel <input type="text" id="mpTitle" style="flex:1" placeholder="{name}"></label>
+          <label>Zeile 2 <input type="text" id="mpSub" style="flex:1" placeholder="{datum} · {distanz} · {zeit}"></label>
+          <label>Zeile 3 <input type="text" id="mpSub2" style="flex:1" placeholder="(optional)"></label>
+          <div class="chips" id="mpChips"></div>
+          <details id="mpOverDet"><summary>Werte selbst eintragen (z.&nbsp;B. offizielle Gesamtzeit)</summary><div class="grid2" id="mpOverrides"></div></details>
+          <div class="row3">
+            <label>Position <select id="mpTitlePos"><option value="band">in der Titelleiste</option><option value="map-bl">Karte unten links</option><option value="map-br">Karte unten rechts</option><option value="map-tl">Karte oben links</option><option value="map-tr">Karte oben rechts</option><option value="map-c">Karte Mitte</option><option value="none">kein Titel</option></select></label>
+            <label>Schrift <select id="mpFont"></select></label>
+          </div>
+          <div class="row3">
+            <label>Größe <input type="number" id="mpTitleSize" value="9" min="2" step="0.5"> mm</label>
+            <label>Darstellung <select id="mpTitleMode"></select></label>
+            <label>Höhe <input type="number" id="mpTitleH" value="0.8" min="0" step="0.2"> mm</label>
+          </div>
+          <h4>Ortsnamen auf der Karte</h4>
+          <label class="check"><input type="checkbox" id="mpLabels"> Ortsnamen und Gipfel beschriften</label>
+          <div class="chips" id="mpLabelKinds"></div>
+          <div class="row3">
+            <label>Größe <input type="number" id="mpLabelSize" value="4" min="1.5" step="0.5"> mm</label>
+            <label>Darstellung <select id="mpLabelMode"></select></label>
+            <label>max. <input type="number" id="mpLabelMax" value="12" min="1" step="1"></label>
+          </div>
+          <p class="note">„folgt dem Gelände“ = Schrift liegt erhaben auf dem Relief. „eben, abgehoben“ = Schrift schwebt eben über dem höchsten Punkt darunter. „auf Plakette“ = kleines Schild hinter der Schrift.</p>
+        </div>
+
+        <div class="tab" data-tab="frame" hidden>
+          <div class="row3">
+            <label title="0 = kein Rahmen">Rahmenbreite <input type="number" id="mpFrameW" value="6" min="0" step="1"> mm</label>
+            <label title="Höhe über der Grunddicke">Rahmenhöhe <input type="number" id="mpFrameH" value="2" min="0" step="0.5"> mm</label>
+            <button id="mpFrameMax" title="Rahmen so hoch wie der höchste Punkt der Karte">↑ bis Gipfelhöhe</button>
+          </div>
+          <div class="row3">
+            <label>Titelleiste <select id="mpBand"><option value="bottom">unten</option><option value="top">oben</option><option value="none">keine</option></select></label>
+            <label>Höhe der Leiste <input type="number" id="mpBandMm" value="22" min="5" step="1"> mm</label>
+          </div>
+          <p class="note">Rahmen und Titelleiste sind eben; Schrift in der Leiste wird erhaben oder eingraviert. Filamente unter „Farben“.</p>
+        </div>
+
+        <div class="tab" data-tab="mods" hidden>
+          <label class="check"><input type="checkbox" id="mdOn"> <span><b>Stecksystem verwenden</b> – Module werden von hinten mit Verbindern zusammengesteckt und hängen als Ganzes an der Wand</span></label>
+          <div id="mdBox">
+            <div class="modgrid">
+              <span></span><label>oben <select id="mdTop" class="mdtype"></select></label><span></span>
+              <label>links <select id="mdLeft" class="mdtype"></select></label><div class="mdmap">Karte</div><label>rechts <select id="mdRight" class="mdtype"></select></label>
+              <span></span><label>unten <select id="mdBottom" class="mdtype"></select></label><span></span>
+            </div>
+            <details open><summary>Bilderrahmen</summary>
+              <div class="row3"><label>Foto <select id="mdPhotoFmt"><option value="9x13">9 × 13 cm</option><option value="10x15" selected>10 × 15 cm</option><option value="13x18">13 × 18 cm</option><option value="10x10">10 × 10 cm</option><option value="13x13">13 × 13 cm</option><option value="15x20">15 × 20 cm</option><option value="custom">eigenes Maß</option></select></label>
+              <label><select id="mdPhotoOr"><option value="portrait">hochkant</option><option value="landscape">quer</option></select></label></div>
+              <div class="row3" id="mdPhotoCustom" hidden><label>B <input type="number" id="mdPhotoW" value="100" min="20"> mm</label><label>H <input type="number" id="mdPhotoH" value="150" min="20"> mm</label></div>
+              <div class="row3"><label title="Breite des Rahmens um das Foto">Rand <input type="number" id="mdPhotoBorder" value="12" min="6" step="1"> mm</label><label title="So weit verdeckt der Rahmen den Fotorand">Überdeckung <input type="number" id="mdPhotoOverlap" value="3" min="1" step="0.5"> mm</label></div>
+              <p class="note">Das Foto (z.&nbsp;B. Abzug aus der Drogerie) wird von oben eingeschoben.</p>
+            </details>
+            <details><summary>Medaillenhalter</summary>
+              <div class="row3"><label>Höhe <input type="number" id="mdMedalH" value="45" min="25" step="1"> mm</label><label>Haken <input type="number" id="mdMedalN" value="0" min="0" step="1" title="0 = automatisch"></label><label>Länge <input type="number" id="mdMedalL" value="20" min="8" step="1"> mm</label></div>
+              <label>Text <input type="text" id="mdMedalText" value="FINISHER" style="flex:1"></label>
+            </details>
+            <details><summary>Textschild</summary>
+              <div class="row3"><label>Höhe <input type="number" id="mdTextH" value="40" min="15" step="1"> mm</label><label>Schriftgröße <input type="number" id="mdTextSize" value="8" min="3" step="0.5"> mm</label></div>
+              <label>Text <textarea id="mdText" rows="2" style="flex:1">{name}
+{datum}</textarea></label>
+            </details>
+            <details><summary>Verbinder &amp; Aufhängung</summary>
+              <div class="row3"><label title="Gesamtdicke der flachen Module">Moduldicke <input type="number" id="mdThick" value="7" min="4" step="0.5"> mm</label><label title="Luft je Seite zwischen Verbinder und Tasche">Spiel <input type="number" id="mdClear" value="0.2" min="0" step="0.05"> mm</label><label>Abstand <input type="number" id="mdSpacing" value="70" min="30" step="5"> mm</label></div>
+              <label class="check"><input type="checkbox" id="mdHang" checked> Aufhängeschlitze für Nagel/Schraube auf der Rückseite</label>
+            </details>
+            <p class="note" id="mdInfo"></p>
+          </div>
+        </div>
+
+        <div class="tab" data-tab="colors" hidden>
+          <div class="row3"><label>Verfügbare Filamente <select id="mpMaxSlots"><option value="4">4 (z.&nbsp;B. 1 × ACE Pro / AMS)</option><option value="8" selected>8</option><option value="16">16</option></select></label><button id="mpAutoColors">Farben automatisch zuordnen</button></div>
+          <table class="lgtable" id="mpRoles"></table>
+          <h4>Filamente</h4>
+          <div id="mpPalette"></div>
+        </div>
+      </div>
+    </div>
+    <div class="dlgfoot"><span id="mpStatus" class="note"></span><span class="grow"></span><button id="mpCancel">Schließen</button><button id="mpApply" class="primary">Modell erzeugen</button></div>
+  </div>
+</div>
+
+<div id="helpDlg" class="modal" hidden>
+  <div class="dlg help">
+    <h2>Hilfe &amp; Tastenkürzel</h2>
+    <div class="dlgbody helpbody">
+      <div>
+        <h4>Datei</h4>
+        <table class="keys">
+          <tr><td>Strg+O</td><td>Öffnen (STL, OBJ, 3MF, Projekt)</td></tr>
+          <tr><td>Strg+S</td><td>Projekt speichern (beim 2. Mal direkt in dieselbe Datei)</td></tr>
+          <tr><td>Strg+Umschalt+S</td><td>Speichern unter …</td></tr>
+          <tr><td>Strg+E</td><td>3MF für den Slicer exportieren</td></tr>
+          <tr><td>Strg+Z / Strg+Y</td><td>Rückgängig / Wiederholen</td></tr>
+        </table>
+        <h4>Ansicht</h4>
+        <table class="keys">
+          <tr><td>Rechte Maustaste</td><td>drehen</td></tr><tr><td>Mittlere Maustaste</td><td>verschieben</td></tr><tr><td>Mausrad</td><td>zoomen</td></tr>
+          <tr><td>Leertaste + Links</td><td>drehen (in jedem Werkzeug)</td></tr><tr><td>Pos1</td><td>Ansicht einpassen</td></tr><tr><td>W</td><td>Dreiecksnetz</td></tr>
+        </table>
+      </div>
+      <div>
+        <h4>Malen</h4>
+        <table class="keys">
+          <tr><td>B T F R K G H I S L V</td><td>Pinsel, Dreieck, Eimer, Rechteck, Form, Verlauf, Höhe, Pipette, Teilen, Hinlegen, Ansicht</td></tr>
+          <tr><td>1 – 9</td><td>Filament wählen</td></tr><tr><td>Strg + Malen</td><td>mit Filament 1 (Radierer)</td></tr>
+          <tr><td>Alt + Klick</td><td>Farbe aufnehmen</td></tr><tr><td>[ ]</td><td>Pinsel kleiner / größer</td></tr>
+        </table>
+        <h4>Speichern</h4>
+        <p class="note">Projekte (<b>.3dprojekt</b>) enthalten Modell, Farben und – bei Karten – alle Karten-Einstellungen und Routen. So kannst du später weiterarbeiten. Zusätzlich wird automatisch im Browser zwischengespeichert; nach einem Absturz erscheint das Projekt auf der Startseite unter „Zuletzt bearbeitet“.</p>
+        <p class="note">Karten: Höhen © Mapzen/AWS Terrain Tiles, Karte © OpenStreetMap-Mitwirkende (ODbL).</p>
+      </div>
+    </div>
+    <div class="dlgfoot"><span class="grow"></span><button id="helpClose" class="primary">Schließen</button></div>
   </div>
 </div>
 <script type="module" src="js/main.js"></script>

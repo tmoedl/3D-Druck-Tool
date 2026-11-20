@@ -8,6 +8,13 @@ _backup/
 *.stl
 *.3mf
 *.obj
+*.3dprojekt
+*.fit
+*.fit.gz
+*.tcx
+# eigene Aktivitäten nicht einchecken (Beispiele liegen in docs/demo/)
+*.gpx
+!docs/demo/*.gpx
 
 # Python / Editor / Betriebssystem
 __pycache__/

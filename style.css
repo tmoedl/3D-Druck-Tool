@@ -262,3 +262,13 @@ table.keys td:first-child { white-space: nowrap; color: #93c5fd; width: 1%; }
 .mpopts .lgtable td:first-child { white-space: nowrap; }
 .mpopts textarea { background: var(--bg); border: 1px solid var(--line); border-radius: 5px; color: var(--text); font: inherit; padding: 4px 6px; }
 @media (max-width: 900px) { .mpbody { grid-template-columns: 1fr; overflow-y: auto; } .mpstage { min-height: 360px; } }
+
+/* ---------- Druckvorschau ---------- */
+.dlg.print { width: min(1500px, 98vw); height: 94vh; z-index: 30; }
+.dlg.print h2 { display: flex; align-items: center; gap: 8px; }
+.dlg.print .seg { width: 420px; }
+.prstage { position: relative; flex: 1; min-height: 0; margin: 10px 16px 0; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); }
+#prCanvas { width: 100%; height: 100%; display: block; }
+#prBusy { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); background: rgba(0,0,0,.75); padding: 6px 14px; border-radius: 6px; }
+.dlg.print .dlgfoot { gap: 12px; flex-wrap: wrap; }
+#prDlg { z-index: 40; }

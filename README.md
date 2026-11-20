@@ -1,6 +1,6 @@
 # 3D-Druck-Tool – STL-Farbeditor
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue)
+![Version](https://img.shields.io/badge/version-1.2.0-blue)
 ![Lizenz: MIT](https://img.shields.io/badge/Lizenz-MIT-green)
 ![Läuft im Browser](https://img.shields.io/badge/l%C3%A4uft-offline%20im%20Browser-orange)
 
@@ -12,7 +12,16 @@ den **Anycubic Slicer Next** (ACE Pro); das Format lesen auch OrcaSlicer, Bambu 
 
 ![3D-Karte einer Beispiel-Aktivität am Eibsee im Editor](docs/images/karte-editor.png)
 
-## Neu in 1.1: Karten-Studio
+## Neu in 1.2: Druckvorschau, edle Medaille, schönere Rahmen
+
+![Druckvorschau an der Wand: Karte, Bilderrahmen und Medaille](docs/images/druckvorschau-wand.png)
+
+| | |
+|---|---|
+| ![Rahmen-Einstellungen](docs/images/rahmen.png) | ![Druckvorschau auf dem Tisch](docs/images/druckvorschau-tisch.png) |
+| **Rahmen** folgt dem Kartenrand oder liegt eben darüber; Profile und Übergänge wählbar | **Druckvorschau** mit Schichtlinien, Material und Schatten – auch auf dem Tisch oder Druckbett |
+
+## Karten-Studio (seit 1.1)
 
 Aktivität ablegen – fertig ist ein Vorschlag: Ausschnitt, Format, Überhöhung, Farben, Titel
 und Statistik passend zur Sportart. Danach ist alles einstellbar.
@@ -164,7 +173,13 @@ Gelände)*, *eben, abgehoben* (schwebt eben über dem höchsten Punkt), *auf Pla
 *eingraviert* oder *nur farbig*. Ortsnamen und Gipfel werden auf Wunsch automatisch
 beschriftet, ohne sich gegenseitig oder die Route zu überdecken.
 
-**Rahmen:** Breite, Höhe (auch „bis Gipfelhöhe“), Titelleiste oben/unten/keine.
+**Rahmen:** Die Höhe **folgt dem Kartenrand** (Standard: der Rahmen steigt und fällt mit dem
+Gelände am Rand und liegt überall knapp darüber – keine sichtbaren Bergflanken, keine hohen Wände;
+die Titelleiste bleibt eben), liegt **eben über dem höchsten Randpunkt** (die Karte sitzt wie in
+einer Schale), nach dem **höchsten Gipfel** oder ist **fest** (wie in 1.1: niedriger
+Sockel, das Gelände steht mit sichtbaren Seitenwänden darauf) – jeweils plus Zugabe in mm.
+Profil: flach, Fase innen/außen, abgerundet, Stufe innen/außen (mit Tiefe). Übergang zur Karte:
+direkt, **Schattenfuge** oder **sanft auslaufend** (Breite in mm). Titelleiste oben/unten/keine.
 
 **Farben:** Anzahl verfügbarer Filamente (4, 8 oder 16) – die Zuordnung wird automatisch
 gewählt und kann pro Untergrund, Rahmen, Schrift usw. geändert werden.
@@ -177,7 +192,8 @@ werden; das Ganze hängt an Aufhängeschlitzen für Nagel oder Schraube an der W
 | Modul | Beschreibung |
 |---|---|
 | Bilderrahmen | für Fotoabzüge 9×13, 10×15, 13×18, 10×10, 13×13, 15×20 cm oder eigenes Maß, hochkant oder quer; das Foto wird von oben eingeschoben |
-| Medaillenhalter | Leiste mit Haken (Anzahl automatisch oder fest), optional Text wie „FINISHER“ |
+| Medaille (einzeln, edel) | für eine Medaille: leicht vertiefte Bühne mit Zierring (nach Ø der Medaille), breiter Haken mit Nase für das Band, Zierlinie, zwei Textzeilen (z.&nbsp;B. `{titel}` und `FINISHER · {zeit}`); breit = Text links/rechts, hoch = Text darunter |
+| Medaillenleiste | Leiste mit mehreren Haken (Anzahl automatisch oder fest), optional Text wie „FINISHER“ |
 | Textschild | eigener Text, auch mit Platzhaltern (z.&nbsp;B. `{name}`, `{datum}`) |
 
 Je Seite (oben, unten, links, rechts) lässt sich ein Modul wählen. Die Verbinder werden an
@@ -190,6 +206,15 @@ Beim 3MF-Export ist jedes Teil ein eigenes Objekt.
 | Verbinder (gedruckt) | wird im Studio angezeigt |
 | Nagel oder Schraube mit Kopf ≤ 7 mm | 1–2 |
 | Fotoabzug | 1 je Bilderrahmen |
+
+## Druckvorschau
+
+**🖨 Druckvorschau** (Kopfleiste, auch im Karten-Studio) zeigt das Modell so, wie es gedruckt
+aussehen könnte: matter Kunststoff, Schichtlinien (Schichthöhe 0,12–0,28 mm; an Wänden und
+Hängen deutlich, auf ebenen Oberseiten die diagonalen Bahnen), weiche Schatten und Streiflicht.
+Ansichten: **an der Wand** (wie aufgehängt; im Studio mit eingesetztem Foto und Medaille am
+Band, abschaltbar), **auf dem Tisch** und **auf dem Druckbett**. Das Licht lässt sich drehen,
+**Bild speichern** legt ein PNG ab. Dazu eine grobe Materialschätzung (Gramm, Farbanteile).
 
 ## Projekte speichern
 
@@ -359,6 +384,7 @@ node tests/test_gpx.mjs       # FIT-Parser (synthetische Datei), Multisport, Sta
 - `js/gpx.js`: GPX/TCX/FIT lesen, Statistik, Platzhalter
 - `js/modules.js`: Stecksystem – Säulen-Vermascher, Bilderrahmen, Medaillenhalter, Textschild, Verbinder
 - `js/project.js`: Projekte speichern/öffnen, Zwischenspeicher
+- `js/printrender.js`: Druckvorschau (Material, Schichtlinien, Szenen, Bild speichern)
 - `docs/demo/`: fiktive Beispiel-Aktivitäten
 - `tests/`: Node-Tests
 - `start.sh` (Linux/macOS), `start.bat` + `start.ps1` (Windows), `server.py`: lokaler Webserver

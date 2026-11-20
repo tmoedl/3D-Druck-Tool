@@ -80,8 +80,7 @@ export function initMap(app) {
   const slotOptions = (sel) => S.pal.map((p, i) => `<option value="${i}"${i === sel ? ' selected' : ''}>${i + 1}: ${app.escapeHtml(p.name)}</option>`).join('');
 
   // ---------------------------------------------------------------- Texte -> Masken
-  function textMask(lines, sizes, fontKey, align = 'center') {
-    const ppm = 10;
+  function textMask(lines, sizes, fontKey, align = 'center', ppm = 10) {
     const fmt = (FONTS[fontKey] || FONTS.sans)[1];
     const cv = document.createElement('canvas');
     const g = cv.getContext('2d');
@@ -113,11 +112,11 @@ export function initMap(app) {
   }
   const place = (m, cx, cy) => ({ ...m, x0: cx - m.w / 2, y0: cy - m.h / 2 });
   // Maske in ein Rechteck einpassen (verkleinern falls nötig)
-  function fitMask(lines, sizes, font, maxW, maxH) {
-    let m = textMask(lines, sizes, font);
+  function fitMask(lines, sizes, font, maxW, maxH, ppm = 10) {
+    let m = textMask(lines, sizes, font, 'center', ppm);
     if (!m) return null;
     const f = Math.min(1, maxW / m.w, maxH / m.h);
-    if (f < 0.999) m = textMask(lines, sizes.map((s) => s * f * 0.98), font);
+    if (f < 0.999) m = textMask(lines, sizes.map((s) => s * f * 0.98), font, 'center', ppm);
     return m;
   }
 
@@ -133,6 +132,7 @@ export function initMap(app) {
       tr.forEach((t, i) => { const s = GPX.statValues(t); for (const k in s) v[`${i + 1}.${k}`] = s[k]; });
     }
     for (const [k, x] of Object.entries(S.text.overrides)) if (x !== '' && x != null) v[k] = x;
+    v.titel = GPX.fillTemplate((S.text.title || '').replace(/\{titel\}/g, ''), v) || v.name || '';
     return v;
   }
   // Mehrkampf erkennen: mehrere Sportarten -> Titel wie „Triathlon“
@@ -212,7 +212,7 @@ export function initMap(app) {
     // Größe: längste Seite ~ 200 mm, passt mit Rahmen und Leiste auf 250er Druckbett
     const band = 22, f = 6;
     cfg.sizeMm = Math.round(Math.min(200, (230 - band - 2 * f) / Math.max(a.aspect, 0.01), 230 - 2 * f));
-    cfg.frame = { ...cfg.frame, width: f, height: 2, band: tr.length ? 'bottom' : 'none', bandMm: band };
+    cfg.frame = { ...cfg.frame, width: f, height: 1.5, mode: 'follow', style: 'bevelIn', profileMm: 1.2, trans: 'hard', transMm: 3, band: tr.length ? 'bottom' : 'none', bandMm: band };
     cfg.res = cfg.sizeMm > 170 ? 0.4 : 0.35;
     cfg.surface.mode = 'osm';
     cfg.buildings.on = a.widthM < 3500;
@@ -458,7 +458,7 @@ export function initMap(app) {
     const d = await ensureData(status, final);
     const res = final ? S.cfg.res : Math.max(S.cfg.res, S.cfg.sizeMm / 240);
     const c = mapCfg(res);
-    const L = layoutMap(c);
+    let L = layoutMap(c);
     const A = areaMerc(c.area);
     // Relief-Vorschlag erst, wenn Höhen vorliegen
     if (pendingSuggest) {
@@ -468,6 +468,19 @@ export function initMap(app) {
         if (e < eMin) eMin = e; if (e > eMax) eMax = e;
       }
       suggestRelief({ eMin, eMax, mmPerM: L.W / A.w / Math.cos(c.area.lat * Math.PI / 180) });
+      // Titelleiste an die niedrigere Kante (oben/unten) legen – sonst wird sie bei „folgt dem Rand“ zum hohen Block
+      if (S.cfg.frame.band !== 'none') {
+        let south = -Infinity, north = -Infinity;
+        for (let i = 0; i <= 60; i++) {
+          const mx = A.cx + (i / 60 - 0.5) * A.w;
+          south = Math.max(south, d.dem.elev(mx, A.cy - A.h / 2 * 0.98));
+          north = Math.max(north, d.dem.elev(mx, A.cy + A.h / 2 * 0.98));
+        }
+        S.cfg.frame.band = north < south - (eMax - eMin) * 0.1 ? 'top' : 'bottom';
+        c.frame.band = S.cfg.frame.band;
+        L = layoutMap(c);
+        syncUI();
+      }
       pendingSuggest = false;
       Object.assign(c.terrain, S.cfg.terrain);
     }
@@ -485,6 +498,7 @@ export function initMap(app) {
     }
     const r = buildMap(c, { elev: d.dem.elev, features: feats, tracks, texts, pockets }, (p) => status('Berechne ' + p + ' …'));
     const parts = [{ pos: r.pos, col: r.col, name: 'Karte' }];
+    const decor = [];
     let modInfo = '';
     if (plan) {
       const T = S.mods.thickness;
@@ -498,19 +512,37 @@ export function initMap(app) {
           const P = { ...S.mods.photo, ...MOD.photoDims(S.mods.photo) };
           if (P.h + 12 > h || P.w + 12 > w) modInfo += `⚠ Foto ${P.w}×${P.h} passt nicht in ${Math.round(w)}×${Math.round(h)} mm – Kartengröße erhöhen oder Foto drehen. `;
           res2 = MOD.photoFrame(P, w, h, T, loc, { frame: R.modPlate, back: R.modPlate });
+          decor.push({ type: 'photo', rect: res2.photo.map((v, k) => v + (k % 2 ? cy : cx)), z: res2.back, mod: m });
         } else if (m.type === 'medal') {
-          const tm = S.mods.medal.text ? fitMask([GPX.fillTemplate(S.mods.medal.text, vals)], [S.mods.medal.textSize || 8], S.text.font, w * 0.8, h * 0.32) : null;
+          const Md = S.mods.medal;
+          const Lt = MOD.medalLayout(Md, w, h);
+          const l1 = GPX.fillTemplate(Md.line1 || '', vals), l2 = GPX.fillTemplate(Md.line2 || '', vals);
+          const masks = [];
+          const put = (lines, sizes, ar) => {
+            const ls = lines.filter((x) => x);
+            if (!ls.length || ar.x1 - ar.x0 < 8 || ar.y1 - ar.y0 < 4) return;
+            const tm = fitMask(ls, sizes.slice(0, ls.length), S.text.font, ar.x1 - ar.x0, ar.y1 - ar.y0, 5);
+            if (tm) masks.push(place(tm, (ar.x0 + ar.x1) / 2, (ar.y0 + ar.y1) / 2));
+          };
+          if (Lt.wide) { put([l1], [Md.textSize * 1.25], Lt.areas[0]); put(l2.split('\n'), [Md.textSize, Md.textSize], Lt.areas[1]); }
+          else put([l1, ...l2.split('\n')], [Md.textSize * 1.15, Md.textSize, Md.textSize], Lt.areas[0]);
+          res2 = MOD.medalSingle(Md, w, h, T, loc, masks, { plate: R.modPlate, text: R.modText });
+          decor.push({ type: 'medal', cx: res2.layout.cx + cx, cy: res2.layout.cy + cy, r: Md.diameter / 2, z: T - 0.8, hook: res2.layout.hook.map((v, k) => v + (k % 2 ? cy : cx)), top: T + Md.pegLen, mod: m });
+          modInfo += res2.info + ' · ';
+        } else if (m.type === 'medalbar') {
+          const tm = S.mods.medalbar.text ? fitMask([GPX.fillTemplate(S.mods.medalbar.text, vals)], [S.mods.medalbar.textSize || 8], S.text.font, w * 0.8, h * 0.32, 5) : null;
           const masks = tm ? [place(tm, 0, h / 2 - 4 - tm.h / 2)] : [];
-          res2 = MOD.medalHolder({ ...S.mods.medal, textH: 1 }, w, h, T, loc, masks, { plate: R.modPlate, text: R.modText });
+          res2 = MOD.medalHolder({ ...S.mods.medalbar, textH: 1 }, w, h, T, loc, masks, { plate: R.modPlate, text: R.modText });
         } else {
           const lines = GPX.fillTemplate(S.mods.text.lines, vals).split('\n');
-          const tm = fitMask(lines, lines.map((_, i) => (i ? 0.7 : 1) * S.mods.text.textSize), S.text.font, w - 10, h - 10);
+          const tm = fitMask(lines, lines.map((_, i) => (i ? 0.7 : 1) * S.mods.text.textSize), S.text.font, w - 10, h - 10, 5);
           res2 = MOD.textPlate({ ...S.mods.text, textH: 1 }, w, h, T, [...loc], tm ? [place(tm, 0, 0)] : [], { plate: R.modPlate, text: R.modText });
         }
         const g = S.mods.gap;
         const ox = cx + Math.sign(Math.round(cx)) * g, oy = cy + Math.sign(Math.round(cy)) * g;
         const p = res2.mesh.pos;
         for (let k = 0; k < p.length; k += 3) { p[k] += ox; p[k + 1] += oy; }
+        for (const d of decor) if (d.mod === m) { const ddx = ox - cx, ddy = oy - cy; if (d.rect) d.rect = [d.rect[0] + ddx, d.rect[1] + ddy, d.rect[2] + ddx, d.rect[3] + ddy]; if (d.hook) { d.cx += ddx; d.cy += ddy; d.hook = [d.hook[0] + ddx, d.hook[1] + ddy, d.hook[2] + ddx, d.hook[3] + ddy]; } delete d.mod; }
         parts.push({ pos: p, col: res2.mesh.col, name: MOD.MODULE_TYPES[m.type] });
       }
       // Verbinder unter dem Ganzen
@@ -532,7 +564,8 @@ export function initMap(app) {
     const pos = new Float32Array(n), col = new Uint8Array(n / 9);
     let o = 0;
     for (const p of parts) { pos.set(p.pos, o); col.set(p.col, o / 9); o += p.pos.length; }
-    built = { pos, col, info: r.info, layout: L, parts: parts.length, final };
+    const mainTris = parts.filter((q) => q.name !== 'Verbinder').reduce((a2, q) => a2 + q.col.length, 0);
+    built = { pos, col, info: r.info, layout: L, parts: parts.length, final, decor, mainTris };
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, z1 = 0;
     for (let k = 0; k < pos.length; k += 3) { const x = pos[k], y = pos[k + 1], z = pos[k + 2]; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; if (z > z1) z1 = z; }
     const tris = col.length;
@@ -639,7 +672,7 @@ export function initMap(app) {
   $('mpLabelMode').innerHTML = modeOpts(TEXT_MODES);
   for (const id of ['mdLeft', 'mdRight', 'mdTop', 'mdBottom']) $(id).innerHTML = modeOpts(MOD.MODULE_TYPES);
   $('mpLabelKinds').innerHTML = Object.entries(LABEL_KINDS).map(([k, v]) => `<label><input type="checkbox" data-kind="${k}"> ${v}</label>`).join('');
-  const CHIPS = { name: 'Name', datum: 'Datum', distanz: 'Distanz', zeit: 'Zeit', bewegungszeit: 'Bewegungszeit', pace: 'Pace/Tempo', hm: 'Höhenmeter', maxhoehe: 'max. Höhe', sport: 'Sportart', gesamtzeit: 'Gesamtzeit' };
+  const CHIPS = { titel: 'Titel', name: 'Name', datum: 'Datum', distanz: 'Distanz', zeit: 'Zeit', bewegungszeit: 'Bewegungszeit', pace: 'Pace/Tempo', hm: 'Höhenmeter', maxhoehe: 'max. Höhe', sport: 'Sportart', gesamtzeit: 'Gesamtzeit' };
   $('mpChips').innerHTML = 'Einfügen: ' + Object.entries(CHIPS).map(([k, v]) => `<button data-ph="${k}" title="{${k}}">${v}</button>`).join('');
   let lastTextInput = $('mpSub');
   for (const id of ['mpTitle', 'mpSub', 'mpSub2']) $(id).addEventListener('focus', () => { lastTextInput = $(id); });
@@ -742,6 +775,10 @@ export function initMap(app) {
     $('mpBuild').checked = c.buildings.on; $('mpBuildF').value = c.buildings.factor; $('mpBuildMin').value = c.buildings.minMm;
     $('mpRoads').checked = c.roads.on; $('mpRoadLevel').value = c.roads.level; $('mpRoadW').value = c.roads.widthMm; $('mpRoadRaise').value = c.roads.raise;
     $('mpFrameW').value = c.frame.width; $('mpFrameH').value = c.frame.height; $('mpBand').value = c.frame.band; $('mpBandMm').value = c.frame.bandMm;
+    $('mpFrameMode').value = c.frame.mode || 'fixed'; $('mpFrameStyle').value = c.frame.style || 'flat'; $('mpFrameProf').value = c.frame.profileMm ?? 1.2;
+    $('mpTrans').value = c.frame.trans || 'hard'; $('mpTransMm').value = c.frame.transMm ?? 3; $('mpTransL').hidden = (c.frame.trans || 'hard') === 'hard';
+    $('mpFrameNote').textContent = { follow: 'Der Rahmen steigt und fällt mit dem Gelände am Rand und liegt überall knapp darüber – schöne Übergänge ohne hohe Wände. Die Titelleiste bleibt eben.', edge: 'Der Rahmen liegt immer über dem höchsten Geländepunkt am Kartenrand – die Karte sitzt wie in einer Schale, die Bergflanken verschwinden hinter dem Rahmen.', peak: 'Der Rahmen überragt die ganze Karte – schützt die Gipfel, braucht mehr Material.', fixed: 'Wie bisher: niedriger Rahmen als Sockel, das Gelände steht mit sichtbaren Seitenwänden darauf.' }[c.frame.mode || 'fixed'];
+    renderFramePick();
     const T = S.text;
     $('mpTitle').value = T.title; $('mpSub').value = T.sub; $('mpSub2').value = T.sub2; $('mpTitlePos').value = T.pos; $('mpFont').value = T.font;
     $('mpTitleSize').value = T.size; $('mpTitleH').value = T.h;
@@ -755,7 +792,8 @@ export function initMap(app) {
     $('mdLeft').value = M.left; $('mdRight').value = M.right; $('mdTop').value = M.top; $('mdBottom').value = M.bottom;
     $('mdPhotoFmt').value = M.photo.format; $('mdPhotoOr').value = M.photo.orient; $('mdPhotoCustom').hidden = M.photo.format !== 'custom';
     $('mdPhotoW').value = M.photo.w; $('mdPhotoH').value = M.photo.h; $('mdPhotoBorder').value = M.photo.border; $('mdPhotoOverlap').value = M.photo.overlap;
-    $('mdMedalH').value = M.medal.height; $('mdMedalN').value = M.medal.pegs; $('mdMedalL').value = M.medal.pegLen; $('mdMedalText').value = M.medal.text;
+    $('mdMedalH').value = M.medalbar.height; $('mdMedalN').value = M.medalbar.pegs; $('mdMedalL').value = M.medalbar.pegLen; $('mdMedalText').value = M.medalbar.text;
+    $('mdMedD').value = M.medal.diameter; $('mdMedSize').value = M.medal.textSize; $('mdMed1').value = M.medal.line1; $('mdMed2').value = M.medal.line2; $('mdMedBorder').checked = M.medal.border;
     $('mdTextH').value = M.text.height; $('mdTextSize').value = M.text.textSize; $('mdText').value = M.text.lines;
     $('mdThick').value = M.thickness; $('mdClear').value = M.key.clear; $('mdSpacing').value = M.key.spacing; $('mdHang').checked = M.hang.on;
     $('mpMaxSlots').value = String(S.maxSlots);
@@ -821,11 +859,32 @@ export function initMap(app) {
   bind('mpRoadRaise', () => { S.cfg.roads.raise = num('mpRoadRaise'); });
   bind('mpFrameW', () => { S.cfg.frame.width = num('mpFrameW'); });
   bind('mpFrameH', () => { S.cfg.frame.height = num('mpFrameH'); });
-  $('mpFrameMax').addEventListener('click', () => {
-    if (!built) { app.toast('Erst die 3D-Vorschau berechnen.'); return; }
-    S.cfg.frame.height = Math.ceil((built.info.zMax - built.info.base + 0.4) * 2) / 2;
-    syncUI(); changed();
-  });
+  bind('mpFrameMode', () => { S.cfg.frame.mode = $('mpFrameMode').value; syncUI(); }, 'change');
+  bind('mpFrameStyle', () => { S.cfg.frame.style = $('mpFrameStyle').value; renderFramePick(); }, 'change');
+  bind('mpFrameProf', () => { S.cfg.frame.profileMm = num('mpFrameProf'); renderFramePick(); });
+  bind('mpTrans', () => { S.cfg.frame.trans = $('mpTrans').value; $('mpTransL').hidden = S.cfg.frame.trans === 'hard'; }, 'change');
+  bind('mpTransMm', () => { S.cfg.frame.transMm = num('mpTransMm'); });
+  // kleine Profil-Skizzen zum Anklicken
+  function renderFramePick() {
+    const box = $('mpFramePick');
+    const styles = { flat: 'flach', bevelIn: 'Fase innen', bevelOut: 'Fase außen', round: 'abgerundet', step: 'Stufe innen', stepOut: 'Stufe außen' };
+    if (!box.children.length) {
+      for (const [k, v] of Object.entries(styles)) {
+        const b = document.createElement('button');
+        b.dataset.s = k;
+        b.innerHTML = `<canvas width="84" height="36"></canvas>${v}`;
+        b.addEventListener('click', () => { S.cfg.frame.style = k; syncUI(); changed(); });
+        box.appendChild(b);
+        const g = b.querySelector('canvas').getContext('2d');
+        const drop = (sv) => k === 'round' ? 1 - Math.sqrt(Math.max(0, 1 - (2 * sv - 1) ** 2)) : k === 'bevelIn' ? (sv < 0.55 ? (0.55 - sv) / 0.55 : 0) : k === 'bevelOut' ? (sv > 0.45 ? (sv - 0.45) / 0.55 : 0) : k === 'step' ? (sv < 0.4 ? 1 : 0) : k === 'stepOut' ? (sv > 0.6 ? 1 : 0) : 0;
+        g.fillStyle = '#5eead4'; g.beginPath(); g.moveTo(60, 34);
+        for (let i = 0; i <= 40; i++) { const sv = i / 40; g.lineTo(60 - sv * 50, 8 + drop(sv) * 10); }
+        g.lineTo(10, 34); g.closePath(); g.fill();
+        g.fillStyle = '#4b5563'; g.fillRect(60, 22, 22, 12); // Gelände innen
+      }
+    }
+    box.querySelectorAll('button').forEach((b) => b.classList.toggle('active', b.dataset.s === (S.cfg.frame.style || 'flat')));
+  }
   bind('mpBand', () => { S.cfg.frame.band = $('mpBand').value; if (S.cfg.frame.band === 'none' && S.text.pos === 'band') { S.text.pos = 'map-bl'; S.text.mode = 'plaque'; } syncUI(); }, 'change');
   bind('mpBandMm', () => { S.cfg.frame.bandMm = num('mpBandMm'); });
   bind('mpTitle', () => { S.text.title = $('mpTitle').value; });
@@ -858,10 +917,15 @@ export function initMap(app) {
   bind('mdPhotoH', () => { M().photo.h = num('mdPhotoH'); });
   bind('mdPhotoBorder', () => { M().photo.border = num('mdPhotoBorder'); });
   bind('mdPhotoOverlap', () => { M().photo.overlap = num('mdPhotoOverlap'); });
-  bind('mdMedalH', () => { M().medal.height = num('mdMedalH'); });
-  bind('mdMedalN', () => { M().medal.pegs = num('mdMedalN'); });
-  bind('mdMedalL', () => { M().medal.pegLen = num('mdMedalL'); });
-  bind('mdMedalText', () => { M().medal.text = $('mdMedalText').value; });
+  bind('mdMedalH', () => { M().medalbar.height = num('mdMedalH'); });
+  bind('mdMedalN', () => { M().medalbar.pegs = num('mdMedalN'); });
+  bind('mdMedalL', () => { M().medalbar.pegLen = num('mdMedalL'); });
+  bind('mdMedalText', () => { M().medalbar.text = $('mdMedalText').value; });
+  bind('mdMedD', () => { M().medal.diameter = num('mdMedD'); });
+  bind('mdMedSize', () => { M().medal.textSize = num('mdMedSize'); });
+  bind('mdMed1', () => { M().medal.line1 = $('mdMed1').value; });
+  bind('mdMed2', () => { M().medal.line2 = $('mdMed2').value; });
+  bind('mdMedBorder', () => { M().medal.border = $('mdMedBorder').checked; }, 'change');
   bind('mdTextH', () => { M().text.height = num('mdTextH'); });
   bind('mdTextSize', () => { M().text.textSize = num('mdTextSize'); });
   bind('mdText', () => { M().text.lines = $('mdText').value; });
@@ -949,7 +1013,15 @@ export function initMap(app) {
   }
   function close() { $('mapDlg').hidden = true; open = false; clearTimeout(timer); }
   $('mpCancel').addEventListener('click', close);
-  $('mapDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.activeElement !== $('mpSearch')) close(); });
+  $('mpPrint').addEventListener('click', async () => {
+    $('mpPrint').disabled = true;
+    try {
+      const b = await build(true, (m) => setStatus(m));
+      app.printPreview({ pos: b.pos, col: b.col, palette: S.pal, decor: b.decor, mainTris: b.mainTris, name: GPX.fillTemplate(S.text.title || '', statVals()) || 'Karte' });
+    } catch (e) { console.error(e); app.toast('Fehler: ' + (e.message || e)); }
+    finally { $('mpPrint').disabled = false; }
+  });
+  $('mapDlg').addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.activeElement !== $('mpSearch') && $('prDlg').hidden) close(); });
 
   $('mpApply').addEventListener('click', async () => {
     $('mpApply').disabled = true;
@@ -977,7 +1049,14 @@ export function initMap(app) {
     S.shape = p.shape || 'rect'; $('mpRadius').value = p.radius || 8; S.margin = p.margin ?? 12; S.maxSlots = p.maxSlots || 8;
     S.pal = p.pal; S.roles = p.roles; S.text = { ...S.text, ...p.text }; S.labels = { ...S.labels, ...p.labels };
     const dm = MOD.defaultModuleConfig();
-    S.mods = { ...dm, ...p.mods, key: { ...dm.key, ...(p.mods || {}).key }, hang: { ...dm.hang, ...(p.mods || {}).hang }, photo: { ...dm.photo, ...(p.mods || {}).photo }, medal: { ...dm.medal, ...(p.mods || {}).medal }, text: { ...dm.text, ...(p.mods || {}).text } };
+    S.mods = { ...dm, ...p.mods, key: { ...dm.key, ...(p.mods || {}).key }, hang: { ...dm.hang, ...(p.mods || {}).hang }, photo: { ...dm.photo, ...(p.mods || {}).photo }, medal: { ...dm.medal, ...(p.mods || {}).medal }, medalbar: { ...dm.medalbar, ...(p.mods || {}).medalbar }, text: { ...dm.text, ...(p.mods || {}).text } };
+    // Projekte aus v1.1.0: Rahmen wie damals, alte „Medaillenhalter“ = Leiste
+    if (!p.cfg.frame || !p.cfg.frame.mode) Object.assign(S.cfg.frame, { mode: 'fixed', style: 'flat', trans: 'hard' });
+    if (p.mods && p.mods.medal && 'pegs' in p.mods.medal) {
+      S.mods.medalbar = { ...dm.medalbar, ...p.mods.medal };
+      S.mods.medal = { ...dm.medal };
+      for (const k of ['left', 'right', 'top', 'bottom']) if (S.mods[k] === 'medal') S.mods[k] = 'medalbar';
+    }
     S.tracks = (p.tracks || []).map((t) => ({ ...t, id: idSeq++, points: t.points.map((q) => ({ lat: q[0], lon: q[1], ele: q[2] ?? NaN, t: q[3] ?? NaN })) }));
     pendingSuggest = false;
   }

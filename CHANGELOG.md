@@ -6,6 +6,26 @@ die Versionsnummern folgen [Semantic Versioning](https://semver.org/lang/de/).
 
 ## [Unreleased]
 
+## [1.2.0] – 2026-11-20
+
+### Neu
+- **Druckvorschau:** realistische Darstellung mit Kunststoff-Material, Schichtlinien
+  (Schichthöhe wählbar), weichen Schatten und Streiflicht – an der Wand, auf dem Tisch oder
+  auf dem Druckbett. Foto und Medaille werden auf Wunsch eingesetzt. Bild speichern,
+  grobe Materialschätzung. Im Editor und im Karten-Studio.
+- **Medaille (einzeln, edel):** Halter für eine Medaille mit Bühne und Zierring, breitem
+  Haken mit Nase für das Band, Zierlinie und zwei Textzeilen; passt sich dem Format an
+  (breit: Text links und rechts, hoch: Text darunter). Die Leiste für mehrere Medaillen bleibt.
+- **Rahmen:** Höhe „folgt dem Kartenrand“ (liegt überall knapp über dem Gelände daneben),
+  „eben über dem höchsten Randpunkt“, „über dem höchsten Gipfel“ oder wie bisher fest; Profile flach, Fase innen/außen, abgerundet,
+  Stufe innen/außen; Übergang direkt, Schattenfuge oder sanft auslaufend.
+- Platzhalter `{titel}`.
+
+### Verbessert
+- Schrift und Routen mit weichen Kanten in der Höhe (Kantenglättung) statt Treppenstufen.
+- Seitenflächen an Übergängen immer in Seitenfarbe.
+- Projekte aus 1.1.0 behalten ihren Rahmen und ihre Medaillenleiste.
+
 ## [1.1.0] – 2026-11-20
 
 ### Neu: Karten-Studio (3D-Karten aus Aktivitäten und Gebieten)
@@ -63,6 +83,7 @@ Erste öffentliche Version.
   eigene 3MF-Dateien lassen sich mit Farben wieder öffnen.
 - Startskripte für Linux/macOS (`start.sh`) und Windows (`start.bat`, ohne Python lauffähig).
 
-[Unreleased]: https://github.com/tmoedl/3D-Druck-Tool/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/tmoedl/3D-Druck-Tool/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/tmoedl/3D-Druck-Tool/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/tmoedl/3D-Druck-Tool/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/tmoedl/3D-Druck-Tool/releases/tag/v1.0.0

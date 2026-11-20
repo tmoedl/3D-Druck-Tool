@@ -10,6 +10,7 @@ import { initSplit } from './splitui.js';
 import { triComponents } from './split.js';
 import { initMap } from './mapui.js';
 import * as PRJ from './project.js';
+import { initPrintRender } from './printrender.js';
 
 const $ = (id) => document.getElementById(id);
 const MAX_SLOTS = 16;
@@ -1858,9 +1859,16 @@ split = initSplit({
 });
 
 
+// ---------------------------------------------------------------- Druckvorschau
+const printer = initPrintRender({ download });
+$('btnPrint').addEventListener('click', () => {
+  if (!paint) { toast('Erst ein Modell laden oder erzeugen.'); return; }
+  printer.open({ pos: paint.pos, col: paint.col, palette: state.palette, name: state.modelName });
+});
+
 // ---------------------------------------------------------------- Karten-Studio
 const map = initMap({
-  toast, escapeHtml,
+  toast, escapeHtml, printPreview: (o) => printer.open(o),
   setMapModel(pos, col, palette, name, project) {
     if (paint) snapshot(true);
     const pm = new PaintMesh(pos, col);
@@ -1989,6 +1997,7 @@ renderRecent();
 window.addEventListener('keydown', (e) => {
   const ae = document.activeElement, tag = ae && ae.tagName;
   const typing = (tag === 'INPUT' && !['range', 'checkbox', 'radio', 'color'].includes(ae.type)) || tag === 'SELECT' || tag === 'TEXTAREA';
+  if (printer.isOpen()) { if (e.key === 'Escape') printer.close(); return; }
   if (logo.isOpen() || map.isOpen()) return; // eigene Dialoge mit eigener Tastenbehandlung
   if (e.key === 'F1') { e.preventDefault(); $('helpDlg').hidden = false; return; }
   if (!$('helpDlg').hidden) { if (e.key === 'Escape') $('helpDlg').hidden = true; return; }
@@ -2055,4 +2064,4 @@ function loop() {
 loop();
 
 // Für Tests/Debugging
-window.app = { state, get paint() { return paint; }, get split() { return split; }, setMesh, PaintMesh, loadFiles, IO, IMG, logo, map, setTool, undo, fitView, saveProject, projectBlob, openProjectBuf, camera, controls, requestRender, snap() { renderer.render(scene, camera); return canvas.toDataURL(); } };
+window.app = { state, get paint() { return paint; }, get split() { return split; }, setMesh, PaintMesh, loadFiles, IO, IMG, logo, map, printer, setTool, undo, fitView, saveProject, projectBlob, openProjectBuf, camera, controls, requestRender, snap() { renderer.render(scene, camera); return canvas.toDataURL(); } };

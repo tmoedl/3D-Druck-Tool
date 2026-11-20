@@ -40,7 +40,7 @@ export function defaultMapConfig() {
     surface: { mode: 'osm', hypsBands: 4, waterDepth: 0.5, rivers: true },
     buildings: { on: true, factor: 2, minMm: 0.6 },
     roads: { on: false, level: 'major', raise: 0.2, widthMm: 0.8 },
-    frame: { width: 6, height: 2, band: 'bottom', bandMm: 22, style: 'flat' },
+    frame: { width: 6, height: 1.5, mode: 'follow', followMm: 5, style: 'bevelIn', profileMm: 1.2, trans: 'hard', transMm: 3, band: 'bottom', bandMm: 22 },
     slots: { base: 0, farmland: 0, meadow: 0, forest: 0, rock: 0, glacier: 0, urban: 0, water: 0, road: 0, building: 0, frame: 0, band: 0, side: 0 },
   };
 }
@@ -338,9 +338,42 @@ export function buildMap(cfg, data, progress = () => {}) {
     SL[i] = k >= 100 ? (hypsSlots[k - 100] ?? slots.base) : (slots[CLASS_KEYS[k]] ?? slots.base);
   }
 
-  // ---- Tracks
+  // ---- Übergang Karte -> Rahmen (Schattenfuge oder sanft auslaufend)
+  const fr = cfg.frame;
+  const tw = Math.max(0, fr.transMm || 0);
+  const transOn = L.f > 0 && tw > 0 && (fr.trans === 'groove' || fr.trans === 'fade');
+  // Randhöhe am noch unveränderten Gelände messen (innerhalb der Übergangszone)
+  const edgeIn = transOn ? tw : 0;
+  let edgeMax0 = base;
+  for (let j = 0; j < VY; j++) for (let i = 0; i < VX; i++) {
+    const c = j * VX + i;
+    if (vreg[c] !== 2) continue;
+    const d = -L.sdMap(bx0 + i * dx, by0 + j * dy);
+    if (d >= edgeIn && d < edgeIn + 1.6 * dx && Z[c] > edgeMax0) edgeMax0 = Z[c];
+  }
+  const VE = new Uint8Array(NV); // Eckpunkte in der Übergangszone (für Seitenfarbe)
+  if (L.f > 0 && tw > 0 && (fr.trans === 'groove' || fr.trans === 'fade')) {
+    for (let j = 0; j < VY; j++) for (let i = 0; i < VX; i++) {
+      const c = j * VX + i;
+      if (vreg[c] !== 2) continue;
+      const d = -L.sdMap(bx0 + i * dx, by0 + j * dy);
+      if (d < tw + dx) VE[c] = 1;
+      if (d >= tw) continue;
+      if (fr.trans === 'groove') Z[c] = base;
+      else { const t = d / tw, e = t * t * (3 - 2 * t); Z[c] = base + (Z[c] - base) * e; }
+    }
+    if (fr.trans === 'groove') {
+      for (let i = 0; i < NS; i++) {
+        if (sreg[i] !== 2) continue;
+        if (-L.sdMap(SG.x0 + (i % SX) * SG.dx, SG.y0 + Math.floor(i / SX) * SG.dy) < tw) SL[i] = slots.side ?? slots.frame;
+      }
+    }
+  }
+
+  // ---- Tracks (Höhe mit weichem Rand: Gewicht 0..1 je Eckpunkt)
   progress('Routen');
   const ZT = Z.slice(); // Gelände ohne Tracks/Text: Bezug für alle Aufsätze
+  const soft = (W, hw) => (i, d) => { const w = Math.max(0, Math.min(1, (hw + dx * 0.5 - d) / dx)); if (vreg[i] === 2 && w > W[i]) W[i] = w; };
   for (const t of data.tracks || []) {
     const lines = (t.lines || [t.line]).map((ln) => {
       const o = new Float64Array(ln.length);
@@ -348,27 +381,86 @@ export function buildMap(cfg, data, progress = () => {}) {
       return smoothLine(o, t.smoothMm || 0);
     });
     const hw = Math.max(dx * 0.75, t.widthMm / 2);
-    const vset = new Uint8Array(NV);
+    const W = new Float32Array(NV);
     for (const ln of lines) {
       strokeLine(SG, ln, hw, (i) => { if (sreg[i] === 2) SL[i] = t.slot; });
-      strokeLine(VG, ln, hw, (i) => { if (vreg[i] === 2) vset[i] = 1; });
+      strokeLine(VG, ln, hw + dx * 0.5, soft(W, hw));
     }
-    applyRelief(Z, ZT, vset, t.mode, t.height, base);
+    applyRelief(Z, ZT, W, t.mode, t.height, base);
     if (t.markers && lines.length) {
       const first = lines[0], last = lines[lines.length - 1];
       const r = Math.max(t.widthMm * 1.6, 1.6);
-      const ms = new Uint8Array(NV);
+      const ms = new Float32Array(NV);
       for (const [px, py] of [[first[0], first[1]], [last[last.length - 2], last[last.length - 1]]]) {
         strokeLine(SG, [px, py, px, py], r, (i) => { if (sreg[i] === 2) SL[i] = t.markerSlot ?? t.slot; });
-        strokeLine(VG, [px, py, px, py], r, (i) => { if (vreg[i] === 2) ms[i] = 1; });
+        strokeLine(VG, [px, py, px, py], r + dx * 0.5, soft(ms, r));
       }
       applyRelief(Z, ZT, ms, t.mode === 'engrave' ? 'engrave' : 'raise', Math.max(t.height, 0.4) + 0.4, base);
     }
   }
 
   // ---- Rahmen und Titelleiste
-  const fTop = base + Math.max(0, cfg.frame.height || 0);
-  for (let c = 0; c < NV; c++) if (vreg[c] === 1) Z[c] = fTop;
+  // Höhe: fest über der Grunddicke, über dem Kartenrand (Berge ragen nie darüber) oder über dem Gipfel
+  let edgeMax = edgeMax0, peak = base;
+  for (let j = 0; j < VY; j++) for (let i = 0; i < VX; i++) {
+    const c = j * VX + i;
+    if (vreg[c] !== 2) continue;
+    if (Z[c] > peak) peak = Z[c];
+    const d = -L.sdMap(bx0 + i * dx, by0 + j * dy);
+    if (d >= edgeIn && d < edgeIn + 1.6 * dx && Z[c] > edgeMax) edgeMax = Z[c]; // inkl. Routen am Rand
+  }
+  const fh = Math.max(0, fr.height || 0);
+  // bei „Rand“/„Gipfel“ liegt auch die tiefste Stelle des Profils noch um fh über dem Gelände
+  const pAdd = fr.style && fr.style !== 'flat' ? Math.max(0, fr.profileMm ?? 1.5) : 0;
+  const fTop = fr.mode === 'edge' || fr.mode === 'follow' ? edgeMax + fh + pAdd : fr.mode === 'peak' ? peak + fh + pAdd : base + fh;
+  const pd = Math.max(0, Math.min(fr.profileMm ?? 1.5, fTop - base - 0.4));
+  const sdBand = L.bandRect ? (x, y) => sdBox(x, y, (L.bandRect[0] + L.bandRect[2]) / 2, (L.bandRect[1] + L.bandRect[3]) / 2, (L.bandRect[2] - L.bandRect[0]) / 2, (L.bandRect[3] - L.bandRect[1]) / 2) : () => Infinity;
+  const drop = (sv) => { // 0 = volle Höhe, 1 = um pd tiefer; sv: 0 innen … 1 außen
+    switch (fr.style) {
+      case 'round': return 1 - Math.sqrt(Math.max(0, 1 - (2 * sv - 1) ** 2));
+      case 'bevelIn': return sv < 0.55 ? (0.55 - sv) / 0.55 : 0;
+      case 'bevelOut': return sv > 0.45 ? (sv - 0.45) / 0.55 : 0;
+      case 'step': return sv < 0.4 ? 1 : 0;
+      case 'stepOut': return sv > 0.6 ? 1 : 0;
+      default: return 0;
+    }
+  };
+  // „folgt dem Rand“: Höhe = Gelände am nächstgelegenen Kartenrand (entlang des Randes geglättet) + Zugabe
+  const ZG = Z; // Gelände inkl. Routen
+  const zAt = (x, y) => {
+    const fx = Math.max(0, Math.min(VX - 1.001, (x - bx0) / dx)), fy = Math.max(0, Math.min(VY - 1.001, (y - by0) / dy));
+    const i = Math.floor(fx), j = Math.floor(fy), u = fx - i, v = fy - j, c = j * VX + i;
+    return (ZG[c] * (1 - u) + ZG[c + 1] * u) * (1 - v) + (ZG[c + VX] * (1 - u) + ZG[c + VX + 1] * u) * v;
+  };
+  const follow = fr.mode === 'follow';
+  const fw = Math.max(2, fr.followMm ?? 5); // Glättung entlang des Randes
+  const followAt = (x, y) => {
+    const e = 1e-3, d = L.sdMap(x, y);
+    let gx = (L.sdMap(x + e, y) - L.sdMap(x - e, y)) / (2 * e), gy = (L.sdMap(x, y + e) - L.sdMap(x, y - e)) / (2 * e);
+    const gl = Math.hypot(gx, gy) || 1; gx /= gl; gy /= gl;
+    const inset = d + edgeIn + 1.2 * dx; // auf den Rand und knapp hinein
+    const px = x - gx * inset, py = y - gy * inset;
+    let m = base;
+    for (let k = -4; k <= 4; k++) { const t = (k / 4) * fw; m = Math.max(m, zAt(px - gy * t, py + gx * t)); }
+    return m;
+  };
+  let bandTop = fTop;
+  if (follow && L.bandRect) { // Titelleiste eben: höchster Randpunkt an der Leiste
+    const [b0, b1, b2, b3] = L.bandRect, ey = Math.abs(b3 + L.H / 2) < 1e-6 ? b3 : b1; // Kante Karte/Leiste
+    let m = base;
+    for (let x = b0; x <= b2; x += dx) m = Math.max(m, followAt(x, ey));
+    bandTop = m + fh + pAdd;
+  }
+  for (let j = 0; j < VY; j++) for (let i = 0; i < VX; i++) {
+    const c = j * VX + i;
+    if (vreg[c] !== 1) continue;
+    const x = bx0 + i * dx, y = by0 + j * dy;
+    if (inBand(x, y)) { Z[c] = bandTop; continue; }
+    const sm = L.sdMap(x, y), sb = sdBand(x, y);
+    const din = Math.max(0, Math.min(sm, sb)), dout = Math.max(0, -L.sdPlate(x, y));
+    const topHere = !follow ? fTop : sb < sm ? bandTop : Math.max(followAt(x, y) + fh + pAdd, base + fh);
+    Z[c] = topHere - pd * drop(din / Math.max(1e-9, din + dout));
+  }
   for (let i = 0; i < NS; i++) {
     if (sreg[i] !== 1) continue;
     const x = SG.x0 + (i % SX) * SG.dx, y = SG.y0 + Math.floor(i / SX) * SG.dy;
@@ -376,21 +468,22 @@ export function buildMap(cfg, data, progress = () => {}) {
   }
   const ZF = Z.slice();
 
-  // ---- Texte
+  // ---- Texte (Maske bilinear -> weiche Kanten in der Höhe, Farbe scharf)
   progress('Beschriftung');
   for (const tx of data.texts || []) {
     const M = tx.mask;
-    const inMask = (x, y) => {
-      const u = Math.floor((x - M.x0) / M.w * M.cols), v = Math.floor((M.y0 + M.h - y) / M.h * M.rows);
-      return u >= 0 && v >= 0 && u < M.cols && v < M.rows && M.data[v * M.cols + u] >= 128;
+    const alpha = (x, y) => {
+      const fx = ((x - M.x0) / M.w) * M.cols - 0.5, fy = ((M.y0 + M.h - y) / M.h) * M.rows - 0.5;
+      const u = Math.floor(fx), v = Math.floor(fy), a = fx - u, b = fy - v;
+      const g = (uu, vv) => (uu >= 0 && vv >= 0 && uu < M.cols && vv < M.rows ? M.data[vv * M.cols + uu] : 0);
+      return ((g(u, v) * (1 - a) + g(u + 1, v) * a) * (1 - b) + (g(u, v + 1) * (1 - a) + g(u + 1, v + 1) * a) * b) / 255;
     };
     const want = tx.region === 'band' ? 1 : 2;
-    const okReg = (r) => r === want || (want === 2 && r === 2);
-    // Plakette (ebenes Schild hinter dem Text)
+    const okReg = (r) => r === want;
     let ref = ZF;
     if (tx.plaque) {
       const [px0, py0, px1, py1] = tx.plaque.rect;
-      const pv = new Uint8Array(NV);
+      const pv = new Float32Array(NV);
       for (let j = 0; j < VY; j++) for (let i = 0; i < VX; i++) {
         const x = bx0 + i * dx, y = by0 + j * dy;
         if (x >= px0 && x <= px1 && y >= py0 && y <= py1 && vreg[j * VX + i] >= 1) pv[j * VX + i] = 1;
@@ -402,21 +495,24 @@ export function buildMap(cfg, data, progress = () => {}) {
       }
       ref = Z.slice();
     }
-    const tv = new Uint8Array(NV);
+    const tv = new Float32Array(NV);
     for (let j = 0; j < VY; j++) {
       const y = by0 + j * dy;
       if (y < M.y0 - dy || y > M.y0 + M.h + dy) continue;
       for (let i = 0; i < VX; i++) {
         const c = j * VX + i, x = bx0 + i * dx;
-        if (okReg(vreg[c]) && inMask(x, y)) tv[c] = 1;
+        if (!okReg(vreg[c]) || x < M.x0 - dx || x > M.x0 + M.w + dx) continue;
+        const a = alpha(x, y);
+        if (a > 0.2) tv[c] = Math.min(1, (a - 0.2) / 0.55);
       }
     }
     for (let j = 0; j < 2 * ny; j++) {
       const y = SG.y0 + j * SG.dy;
       if (y < M.y0 || y > M.y0 + M.h) continue;
       for (let i = 0; i < SX; i++) {
-        const k = j * SX + i;
-        if (okReg(sreg[k]) && inMask(SG.x0 + i * SG.dx, y)) SL[k] = tx.slot;
+        const k = j * SX + i, x = SG.x0 + i * SG.dx;
+        if (x < M.x0 || x > M.x0 + M.w) continue;
+        if (okReg(sreg[k]) && alpha(x, y) >= 0.5) SL[k] = tx.slot;
       }
     }
     applyRelief(Z, ref, tv, tx.mode, tx.height, base);
@@ -432,7 +528,7 @@ export function buildMap(cfg, data, progress = () => {}) {
   }
 
   progress('Netz');
-  const mesh = meshField({ nx, ny, dx, dy, x0: bx0, y0: by0, Z, SL, SX, B, L, VR: vreg, sideSlot: slots.side ?? slots.frame ?? slots.base });
+  const mesh = meshField({ nx, ny, dx, dy, x0: bx0, y0: by0, Z, SL, SX, B, L, VR: vreg, VE: fr.trans === 'groove' ? VE : null, sideSlot: slots.side ?? slots.frame ?? slots.base });
   return {
     ...mesh, layout: L, grid: { nx, ny, dx, dy, x0: bx0, y0: by0 },
     info: { eMin, eMax, eRef, vsc, base, fTop, zMax: Math.max(...sampleMax(Z)), mmPerM: s / Math.cos(latRad), scale: Math.round(1000 / (s / Math.cos(latRad))) },
@@ -442,19 +538,20 @@ export function buildMap(cfg, data, progress = () => {}) {
 
 function sampleMax(Z) { let m = 0; for (let i = 0; i < Z.length; i++) if (Z[i] > m) m = Z[i]; return [m]; }
 
-// Relief für ausgewählte Punkte: raise = über Gelände, flat = eben über dem höchsten Punkt,
-// engrave = eingraviert, flush = nur Farbe
-function applyRelief(Z, ref, sel, mode, h, base) {
+// Relief für Punkte mit Gewicht w (0..1, weicher Rand): raise = über Gelände, flat = eben über dem
+// höchsten Punkt, engrave = eingraviert, flush = nur Farbe
+function applyRelief(Z, ref, W, mode, h, base) {
   h = Math.max(0, h || 0);
   if (mode === 'flush' || !h) return;
   if (mode === 'flat') {
-    let m = 0;
-    for (let c = 0; c < sel.length; c++) if (sel[c] && ref[c] > m) m = ref[c];
-    for (let c = 0; c < sel.length; c++) if (sel[c]) Z[c] = Math.max(Z[c], m + h);
+    let m = -Infinity;
+    for (let c = 0; c < W.length; c++) if (W[c] >= 0.5 && ref[c] > m) m = ref[c];
+    if (!isFinite(m)) for (let c = 0; c < W.length; c++) if (W[c] > 0 && ref[c] > m) m = ref[c];
+    for (let c = 0; c < W.length; c++) if (W[c] > 0) Z[c] = Math.max(Z[c], ref[c] + (m + h - ref[c]) * W[c]);
   } else if (mode === 'engrave') {
-    for (let c = 0; c < sel.length; c++) if (sel[c]) Z[c] = Math.max(base * 0.5, Math.min(Z[c], ref[c] - h));
+    for (let c = 0; c < W.length; c++) if (W[c] > 0) Z[c] = Math.max(base * 0.5, Math.min(Z[c], ref[c] - h * W[c]));
   } else {
-    for (let c = 0; c < sel.length; c++) if (sel[c]) Z[c] = Math.max(Z[c], ref[c] + h);
+    for (let c = 0; c < W.length; c++) if (W[c] > 0) Z[c] = Math.max(Z[c], ref[c] + h * W[c]);
   }
 }
 
@@ -463,7 +560,7 @@ function applyRelief(Z, ref, sel, mode, h, base) {
 // Seitenwände am Umriss. Ebene Bereiche gleicher Farbe werden zu Rechtecken zusammengefasst.
 // Alle Kanten bleiben konform (keine T-Stellen) -> dicht und mannigfaltig.
 function meshField(F) {
-  const { nx, ny, dx, dy, x0, y0, Z, SL, SX, B, L, VR, sideSlot } = F;
+  const { nx, ny, dx, dy, x0, y0, Z, SL, SX, B, L, VR, VE, sideSlot } = F;
   const VX = nx + 1;
   // Zellen innerhalb des Umrisses (Zellmitte)
   const inc = new Uint8Array(nx * ny);
@@ -514,7 +611,9 @@ function meshField(F) {
     // Übergang Karte -> Rahmen: steile Zelle wie eine Seitenwand färben
     if (VR) {
       const r0 = VR[j * VX + i], r1 = VR[j * VX + i + 1], r2 = VR[(j + 1) * VX + i + 1], r3 = VR[(j + 1) * VX + i];
-      if ((r0 !== r1 || r1 !== r2 || r2 !== r3) && Math.max(a, b, cc, d) - Math.min(a, b, cc, d) > 1.5 * dx) s1[c] = s2[c] = sideSlot;
+      const mixed = r0 !== r1 || r1 !== r2 || r2 !== r3;
+      const inEdge = VE && (VE[j * VX + i] || VE[j * VX + i + 1] || VE[(j + 1) * VX + i + 1] || VE[(j + 1) * VX + i]);
+      if ((mixed || inEdge) && Math.max(a, b, cc, d) - Math.min(a, b, cc, d) > 1.5 * dx) s1[c] = s2[c] = sideSlot;
     }
     flat[c] = a === b && b === cc && cc === d && s1[c] === s2[c] ? 1 : 0;
   }

@@ -1,4 +1,4 @@
-import { columnsToMesh, keyPart, photoFrame, medalHolder, textPlate, planModules, defaultModuleConfig, photoDims, keyPockets } from '../js/modules.js';
+import { columnsToMesh, keyPart, photoFrame, medalHolder, medalSingle, textPlate, planModules, defaultModuleConfig, photoDims, keyPockets } from '../js/modules.js';
 import { checkMesh } from './meshcheck.mjs';
 let fail = 0;
 const ok = (c, m) => { console.log((c ? 'OK  ' : 'FEHLER ') + m); if (!c) fail++; };
@@ -26,7 +26,13 @@ const P = { ...MC.photo, ...photoDims(MC.photo) };
 const pockets = [{ rect: [-62, -10, -50, 10], depth: 3.4 }, { rect: [-5, 70, 5, 88], depth: 3.5 }];
 show('Bilderrahmen 10x15 mit Taschen', photoFrame(P, 128, 180, 7, pockets).mesh);
 const mask = { x0: -30, y0: 2, w: 60, h: 10, cols: 120, rows: 20, data: new Uint8Array(2400).map((_, i) => ((i % 120) / 7 | 0) % 2 ? 255 : 0) };
-show('Medaillenhalter mit Text', medalHolder({ ...MC.medal, textH: 1 }, 200, 45, 7, [{ rect: [-100, 5, -88, 15], depth: 3.4 }], [mask]).mesh);
+show('Medaillenleiste mit Text', medalHolder({ ...MC.medalbar, textH: 1 }, 200, 45, 7, [{ rect: [-100, 5, -88, 15], depth: 3.4 }], [mask]).mesh);
+const wide = medalSingle(MC.medal, 342, 106, 7, [{ rect: [-100, 43, -88, 53], depth: 3.4 }], [mask]);
+show('Medaille einzeln, breit', wide.mesh);
+ok(wide.layout.wide && wide.layout.R >= MC.medal.diameter / 2, `  Ring R ${wide.layout.R} mm, Textflächen ${wide.layout.areas.length}`);
+const tall = medalSingle(MC.medal, 104, 180, 7, [], []);
+show('Medaille einzeln, hoch', tall.mesh);
+ok(!tall.layout.wide && tall.layout.areas[0].y1 > tall.layout.areas[0].y0 + 15, `  Textfläche unter dem Ring ${(tall.layout.areas[0].y1 - tall.layout.areas[0].y0).toFixed(0)} mm hoch`);
 show('Textschild', textPlate({ ...MC.text, textH: 1 }, 120, 40, 7, [], [mask]).mesh);
 
 // Planung: Karte + rechts Foto + unten Medaillen

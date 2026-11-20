@@ -56,4 +56,39 @@ for (const shape of ['rect', 'circle', 'hex']) {
   // Norden oben: Punkt mit großem my muss großes y haben
   ok(toY(A.cy + 100) > toY(A.cy) && toX(A.cx + 100) > toX(A.cx), 'Ausrichtung: Norden = +y, Osten = +x');
 }
+// Rahmen-Varianten: alle dicht; Modus „edge“: Rahmen höher als das Gelände am Kartenrand
+for (const mode of ['fixed', 'edge', 'peak', 'follow']) for (const style of ['flat', 'round', 'bevelIn', 'bevelOut', 'step', 'stepOut']) for (const trans of ['hard', 'groove', 'fade']) {
+  if (mode !== 'edge' && mode !== 'follow' && style !== 'bevelIn') continue;
+  if (mode === 'follow' && trans !== 'hard' && style !== 'bevelIn') continue;
+  const c = { ...cfg, res: 0.8, frame: { ...cfg.frame, mode, style, trans, transMm: 3, height: 1.5, profileMm: 1.2 } };
+  const r = buildMap(c, { ...data, pockets: [] });
+  const m = checkMesh(r.pos);
+  const good = m.open === 0 && m.nonManifold === 0 && m.flipped === 0 && m.vol > 0;
+  let okEdge = true;
+  if ((mode === 'edge' || mode === 'peak') && trans === 'hard') {
+    // höchster Kartenpunkt in 2 mm Abstand zum Kartenrand < Rahmenoberkante
+    const L = r.layout;
+    for (let t = 0; t < r.pos.length; t += 3) {
+      const x = r.pos[t], y = r.pos[t + 1], z = r.pos[t + 2];
+      const d = L.sdMap(x, y);
+      if (d < 0 && d > -2 && z > r.info.fTop - 1.2 + 1e-6) { okEdge = false; break; }
+    }
+  }
+  if (mode === 'follow' && trans === 'hard') {
+    // Kartenpunkte am Rand liegen unter dem Rahmen direkt daneben: max. Höhe in 1 mm Randstreifen der Karte
+    // gegen die niedrigste Rahmenhöhe im angrenzenden 1-mm-Streifen außen, je 10-mm-Abschnitt entlang x (Nordrand)
+    const L = r.layout, north = L.H / 2;
+    for (let x0 = -L.W / 2 + 5; x0 < L.W / 2 - 15; x0 += 10) {
+      let mapMax = 0, frameMin = Infinity;
+      for (let t = 0; t < r.pos.length; t += 3) {
+        const x = r.pos[t], y = r.pos[t + 1], z = r.pos[t + 2];
+        if (x < x0 || x > x0 + 10 || z < 0.01) continue;
+        if (y < north && y > north - 1) mapMax = Math.max(mapMax, z);
+        if (y > north + 1.5 && y < north + 2.5) frameMin = Math.min(frameMin, z);
+      }
+      if (isFinite(frameMin) && mapMax > frameMin + 1e-6) okEdge = false;
+    }
+  }
+  ok(good && okEdge, `Rahmen ${mode}/${style}/${trans}: dicht ${good}, Rand ≤ Rahmen ${okEdge}, Rahmen ${r.info.fTop.toFixed(1)} mm`);
+}
 process.exit(fail ? 1 : 0);

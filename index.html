@@ -13,7 +13,7 @@
 </head>
 <body>
 <header id="topbar">
-  <div class="brand">3D&#8209;Druck&#8209;Tool <span class="version" title="Version">v1.1.0</span></div>
+  <div class="brand">3D&#8209;Druck&#8209;Tool <span class="version" title="Version">v1.2.0</span></div>
   <div class="grp">
     <button id="btnOpen" title="Modell (STL, OBJ, 3MF) oder Projekt (.3dprojekt) öffnen (Strg+O)">📂 Öffnen…</button>
     <button id="btnSave" title="Projekt speichern – alles bleibt bearbeitbar, auch Karten-Einstellungen (Strg+S)">💾 Speichern</button>
@@ -34,6 +34,7 @@
   <span class="grow"></span>
   <span id="saveState" class="muted" title="Speicherstatus"></span>
   <button id="btnHelp" title="Tastenkürzel und Hilfe (F1)">?</button>
+  <button id="btnPrint" title="Realistische Druckvorschau: Schichtlinien, Material, an der Wand / auf dem Tisch">🖨 Druckvorschau</button>
   <button id="btnExport" class="primary" title="3MF für Anycubic Slicer Next / OrcaSlicer / Bambu Studio (Strg+E)">3MF exportieren</button>
   <input type="file" id="fileModel" accept=".stl,.obj,.3mf,.3dprojekt" multiple hidden>
   <input type="file" id="fileAdd" accept=".stl,.obj,.3mf" multiple hidden>
@@ -624,16 +625,29 @@
         </div>
 
         <div class="tab" data-tab="frame" hidden>
+          <h4>Rahmenhöhe</h4>
           <div class="row3">
-            <label title="0 = kein Rahmen">Rahmenbreite <input type="number" id="mpFrameW" value="6" min="0" step="1"> mm</label>
-            <label title="Höhe über der Grunddicke">Rahmenhöhe <input type="number" id="mpFrameH" value="2" min="0" step="0.5"> mm</label>
-            <button id="mpFrameMax" title="Rahmen so hoch wie der höchste Punkt der Karte">↑ bis Gipfelhöhe</button>
+            <label>Höhe <select id="mpFrameMode"><option value="follow">folgt dem Kartenrand (empfohlen)</option><option value="edge">eben, über dem höchsten Randpunkt</option><option value="peak">über dem höchsten Gipfel</option><option value="fixed">fest über der Grunddicke (Sockel)</option></select></label>
+            <label title="Abstand über dem Bezug">+ <input type="number" id="mpFrameH" value="1.5" min="0" step="0.5"> mm</label>
           </div>
+          <p class="note" id="mpFrameNote"></p>
+          <h4>Breite &amp; Profil</h4>
           <div class="row3">
-            <label>Titelleiste <select id="mpBand"><option value="bottom">unten</option><option value="top">oben</option><option value="none">keine</option></select></label>
+            <label title="0 = kein Rahmen">Breite <input type="number" id="mpFrameW" value="6" min="0" step="1"> mm</label>
+            <label>Profil <select id="mpFrameStyle"><option value="flat">flach</option><option value="bevelIn">Fase nach innen</option><option value="bevelOut">Fase nach außen</option><option value="round">abgerundet</option><option value="step">Stufe innen</option><option value="stepOut">Stufe außen</option></select></label>
+            <label title="Wie tief Fase, Rundung oder Stufe abfällt">Tiefe <input type="number" id="mpFrameProf" value="1.2" min="0" step="0.2"> mm</label>
+          </div>
+          <div class="framepick" id="mpFramePick"></div>
+          <h4>Übergang Karte → Rahmen</h4>
+          <div class="row3">
+            <label><select id="mpTrans"><option value="hard">direkt (senkrechte Kante)</option><option value="groove">Schattenfuge</option><option value="fade">sanft auslaufend</option></select></label>
+            <label id="mpTransL">Breite <input type="number" id="mpTransMm" value="3" min="0.5" step="0.5"> mm</label>
+          </div>
+          <h4>Titelleiste</h4>
+          <div class="row3">
+            <label>Lage <select id="mpBand"><option value="bottom">unten</option><option value="top">oben</option><option value="none">keine</option></select></label>
             <label>Höhe der Leiste <input type="number" id="mpBandMm" value="22" min="5" step="1"> mm</label>
           </div>
-          <p class="note">Rahmen und Titelleiste sind eben; Schrift in der Leiste wird erhaben oder eingraviert. Filamente unter „Farben“.</p>
         </div>
 
         <div class="tab" data-tab="mods" hidden>
@@ -651,7 +665,14 @@
               <div class="row3"><label title="Breite des Rahmens um das Foto">Rand <input type="number" id="mdPhotoBorder" value="12" min="6" step="1"> mm</label><label title="So weit verdeckt der Rahmen den Fotorand">Überdeckung <input type="number" id="mdPhotoOverlap" value="3" min="1" step="0.5"> mm</label></div>
               <p class="note">Das Foto (z.&nbsp;B. Abzug aus der Drogerie) wird von oben eingeschoben.</p>
             </details>
-            <details><summary>Medaillenhalter</summary>
+            <details><summary>Medaille (einzeln, edel)</summary>
+              <div class="row3"><label title="Durchmesser der Medaille – danach richtet sich der Zierring">Ø Medaille <input type="number" id="mdMedD" value="70" min="30" step="1"> mm</label><label>Schrift <input type="number" id="mdMedSize" value="7" min="3" step="0.5"> mm</label></div>
+              <label>Zeile 1 <input type="text" id="mdMed1" style="flex:1"></label>
+              <label>Zeile 2 <input type="text" id="mdMed2" style="flex:1"></label>
+              <label class="check"><input type="checkbox" id="mdMedBorder" checked> Zierlinie am Rand</label>
+              <p class="note">Das Band hängt über dem breiten Haken mit Nase, die Medaille liegt in der leicht vertieften Bühne mit Zierring. Platzhalter wie im Titel ({name}, {zeit} …).</p>
+            </details>
+            <details><summary>Medaillenleiste (mehrere)</summary>
               <div class="row3"><label>Höhe <input type="number" id="mdMedalH" value="45" min="25" step="1"> mm</label><label>Haken <input type="number" id="mdMedalN" value="0" min="0" step="1" title="0 = automatisch"></label><label>Länge <input type="number" id="mdMedalL" value="20" min="8" step="1"> mm</label></div>
               <label>Text <input type="text" id="mdMedalText" value="FINISHER" style="flex:1"></label>
             </details>
@@ -676,7 +697,7 @@
         </div>
       </div>
     </div>
-    <div class="dlgfoot"><span id="mpStatus" class="note"></span><span class="grow"></span><button id="mpCancel">Schließen</button><button id="mpApply" class="primary">Modell erzeugen</button></div>
+    <div class="dlgfoot"><span id="mpStatus" class="note"></span><span class="grow"></span><button id="mpPrint" title="Fertiges Modell realistisch als Druck zeigen">🖨 Druckvorschau</button><button id="mpCancel">Schließen</button><button id="mpApply" class="primary">Modell erzeugen</button></div>
   </div>
 </div>
 

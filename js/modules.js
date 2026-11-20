@@ -149,7 +149,8 @@ export function defaultModuleConfig() {
     key: { headW: 10, headL: 7, neckW: 5, neckL: 8, t: 3, clear: 0.2, depthExtra: 0.4, spacing: 70 },
     hang: { on: true, w: 7, l: 22, depth: 3.5 },
     photo: { format: '10x15', orient: 'portrait', w: 102, h: 152, border: 12, overlap: 3, gap: 0.9, back: 0, slot: 0, frameSlot: 0 },
-    medal: { height: 45, pegs: 0, pegLen: 20, pegW: 8, lip: 3, text: 'FINISHER', textSize: 9, textSlot: 1, slot: 0 },
+    medal: { diameter: 70, line1: '{titel}', line2: 'FINISHER · {zeit}', textSize: 7, hookW: 30, pegLen: 15, border: true },
+    medalbar: { height: 45, pegs: 0, pegLen: 20, pegW: 8, lip: 3, text: 'FINISHER', textSize: 9, textSlot: 1, slot: 0 },
     text: { height: 40, lines: 'Mein Event\n2026', textSize: 9, textSlot: 1, slot: 0 },
     gap: 3,
   };
@@ -157,7 +158,7 @@ export function defaultModuleConfig() {
 export const PHOTO_FORMATS = {
   '9x13': [89, 127], '10x15': [102, 152], '13x18': [127, 178], '10x10': [102, 102], '13x13': [127, 127], '15x20': [152, 203], custom: null,
 };
-export const MODULE_TYPES = { none: 'nichts', photo: 'Bilderrahmen (Fotoabzug)', medal: 'Medaillenhalter', text: 'Textschild' };
+export const MODULE_TYPES = { none: 'nichts', photo: 'Bilderrahmen (Fotoabzug)', medal: 'Medaille (einzeln, edel)', medalbar: 'Medaillenleiste (mehrere)', text: 'Textschild' };
 
 // Taschenrechtecke (in Modulkoordinaten) für einen Verbinder an einer Kante
 // edge: 'L'|'R'|'B'|'T' (Kante des Moduls), at = Position entlang der Kante, E = Kantenkoordinate
@@ -235,6 +236,7 @@ export function photoFrame(P, w, h, T, pockets = [], slots = {}) {
       else iv = [[0, top, fs]];
       return pk(x, y, iv);
     }),
+    win, back, photo,
     info: `Foto ${P.w} × ${P.h} mm, Fenster ${(win[2] - win[0]).toFixed(0)} × ${(win[3] - win[1]).toFixed(0)} mm, Einschub oben`,
   };
 }
@@ -269,6 +271,56 @@ export function medalHolder(M, w, h, T, pockets = [], masks = [], slots = {}) {
   };
 }
 
+// Edler Halter für EINE Medaille: Bühne mit Zierring (leicht vertieft), kräftiger Haken mit Nase
+// für das Band, umlaufende Zierlinie und Schrift. Layout passt sich dem Format an:
+// hoch/kompakt -> Ring oben, Text darunter; breit -> Ring mittig, Text links und rechts.
+export function medalLayout(M, w, h) {
+  const m = 7;
+  const wide = w / h > 1.9;
+  const hookH = 5;
+  let R = M.diameter / 2 + 5;
+  const maxR = wide ? (h - 2 * m - hookH - 4) / 2 : Math.min((w - 2 * m) / 2, (h - 2 * m - hookH - 4) * 0.36);
+  R = Math.max(12, Math.min(R, maxR));
+  const cx = 0;
+  const cy = wide ? -hookH / 2 - 2 : h / 2 - m - hookH - 4 - R;
+  const hook = [cx - M.hookW / 2, cy + R + 3, cx + M.hookW / 2, cy + R + 3 + hookH];
+  const areas = wide
+    ? [{ x0: -w / 2 + m + 2, y0: -h / 2 + m, x1: cx - R - m, y1: h / 2 - m }, { x0: cx + R + m, y0: -h / 2 + m, x1: w / 2 - m - 2, y1: h / 2 - m }]
+    : [{ x0: -w / 2 + m + 2, y0: -h / 2 + m + 1, x1: w / 2 - m - 2, y1: cy - R - 3 }];
+  return { wide, R, cx, cy, hook, areas, ringW: 2.6 };
+}
+export function medalSingle(M, w, h, T, pockets = [], masks = [], slots = {}) {
+  const Lt = medalLayout(M, w, h);
+  const outer = [-w / 2, -h / 2, w / 2, h / 2];
+  const s = slots.plate ?? 0, a = slots.text ?? s;
+  const pk = withPockets(null, pockets);
+  const top = T + M.pegLen;
+  const lip = [Lt.hook[0], Lt.hook[3], Lt.hook[2], Lt.hook[3] + 2.6];
+  const bi = 3.2, bw = 1.2; // Zierlinie
+  const lineO = [outer[0] + bi, outer[1] + bi, outer[2] - bi, outer[3] - bi], lineI = [lineO[0] + bw, lineO[1] + bw, lineO[2] - bw, lineO[3] - bw];
+  const res = 0.3, rr = Lt.R + 0.6;
+  const fine = { x0: Lt.cx - rr, y0: Lt.cy - rr, w: 2 * rr, h: 2 * rr, cols: Math.ceil((2 * rr) / res), rows: Math.ceil((2 * rr) / res) };
+  const rects = [outer, Lt.hook, lip, ...(M.border ? [lineO, lineI] : []), ...pockets.map((p) => p.rect)];
+  const [xs, ys] = gridLines(rects, [fine, ...masks]);
+  return {
+    mesh: columnsToMesh(xs, ys, (i, j) => {
+      const x = (xs[i] + xs[i + 1]) / 2, y = (ys[j] + ys[j + 1]) / 2;
+      if (!inR(x, y, outer)) return [];
+      let iv = [[0, T, s]];
+      const r = Math.hypot(x - Lt.cx, y - Lt.cy);
+      if (inR(x, y, Lt.hook)) iv = [[0, top, s]];
+      else if (inR(x, y, lip)) iv = [[0, T, s], [top - 2.4, top, s]];
+      else if (r <= Lt.R && r >= Lt.R - Lt.ringW) iv = [[0, T + 1.6, a]];
+      else if (r < Lt.R - Lt.ringW) iv = [[0, T - 0.8, s]];
+      else if (M.border && inR(x, y, lineO) && !inR(x, y, lineI)) iv = [[0, T + 0.6, a]];
+      else if (masks.some((mk) => maskAt(mk, x, y))) iv = [[0, T + 0.8, a]];
+      return pk(x, y, iv);
+    }),
+    info: `Medaille bis Ø ${Math.round(2 * (Lt.R - Lt.ringW - 1))} mm`,
+    layout: Lt,
+  };
+}
+
 // Textschild: Platte mit erhabener Schrift und schmalem Rand
 export function textPlate(Tx, w, h, T, pockets = [], masks = [], slots = {}) {
   const outer = [-w / 2, -h / 2, w / 2, h / 2], rim = 2.5;
@@ -296,7 +348,8 @@ export function planModules(MC, mapRect) {
   const H = mapRect[3] - mapRect[1];
   const sideW = (type) => {
     if (type === 'photo') { const P = photoDims(MC.photo); return P.w + 2 * Math.max(8, MC.photo.border); }
-    if (type === 'medal') return MC.medal.height;
+    if (type === 'medal') return MC.medal.diameter + 34;
+    if (type === 'medalbar') return MC.medalbar.height;
     if (type === 'text') return MC.text.height;
     return 0;
   };
@@ -304,7 +357,7 @@ export function planModules(MC, mapRect) {
   let x0 = mapRect[0], x1 = mapRect[2];
   if (MC.left !== 'none') { const w = sideW(MC.left); mods.push({ id: 'left', type: MC.left, rect: [x0 - g - w, mapRect[1], x0 - g, mapRect[3]] }); x0 -= w + g; }
   if (MC.right !== 'none') { const w = sideW(MC.right); mods.push({ id: 'right', type: MC.right, rect: [x1 + g, mapRect[1], x1 + g + w, mapRect[3]] }); x1 += w + g; }
-  const hOf = (type) => (type === 'photo' ? photoDims(MC.photo).h + 2 * Math.max(8, MC.photo.border) : sideW(type));
+  const hOf = (type) => (type === 'photo' ? photoDims(MC.photo).h + 2 * Math.max(8, MC.photo.border) : type === 'medal' ? MC.medal.diameter + 36 : sideW(type));
   if (MC.bottom !== 'none') { const h = hOf(MC.bottom); mods.push({ id: 'bottom', type: MC.bottom, rect: [x0, mapRect[1] - g - h, x1, mapRect[1] - g] }); }
   if (MC.top !== 'none') { const h = hOf(MC.top); mods.push({ id: 'top', type: MC.top, rect: [x0, mapRect[3] + g, x1, mapRect[3] + g + h] }); }
   for (const m of mods) m.pockets = [];
